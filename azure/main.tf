@@ -9,13 +9,11 @@ resource "azurerm_resource_group" "rg" {
 }
 
 resource "random_pet" "azurerm_kubernetes_cluster_name" {
-  prefix = "parson"
-#  prefix = "cluster"
+  prefix = "harness-poc"
 }
 
 resource "random_pet" "azurerm_kubernetes_cluster_dns_prefix" {
-  prefix = "parson-dns"
-#  prefix = "dns"
+  prefix = "harness-poc-dns"
 }
 
 resource "azurerm_kubernetes_cluster" "k8s" {
@@ -30,7 +28,7 @@ resource "azurerm_kubernetes_cluster" "k8s" {
 
   default_node_pool {
     name       = "agentpool"
-    vm_size    = "Standard_D2_v2"
+    vm_size    = "Standard_D3_v2"
     node_count = var.node_count
   }
   linux_profile {

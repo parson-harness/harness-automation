@@ -6,3 +6,4 @@ azure/.terraform/providers/registry.terraform.io/hashicorp/azurerm/3.104.0/darwi
 azure/.terraform/providers/registry.terraform.io/hashicorp/random/3.6.1/darwin_arm64/terraform-provider-random_v3.6.1_x5
 azure/.terraform/providers/registry.terraform.io/hashicorp/time/0.9.1/darwin_arm64/terraform-provider-time_v0.9.1_x5
 azure/main.tfplan
+azure/azurek8s
