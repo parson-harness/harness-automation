@@ -1,5 +1,6 @@
 ### Quick Start for spinning up an AKS cluster
-This will spin up a 2-node AKS cluster in the centralus region in the Harness-SE subscription. The name of the cluster and resource group is a combination of the variables.tf settings and a randomly generated animal name using [random_pet](https://registry.terraform.io/providers/hashicorp/random/latest/docs/resources/pet).
+This will spin up a 2-node AKS cluster in the centralus region in the Harness-SE subscription. The name of the cluster and resource group is a combination of the variables.tf settings and a randomly generated animal name using [random_pet] (https://registry.terraform.io/providers/hashicorp/random/latest/docs/resources/pet).<br>
+The resources will be prepended with "harness_poc" and the random pet name will be added to the end, e.g. harness-poc-rg-mudfish is a Resource Group example that could be provisioned by this TF.
 
 #### Reference
 * [Azure tutorial](https://learn.microsoft.com/en-us/azure/aks/learn/quick-kubernetes-deploy-terraform?tabs=bash&pivots=development-environment-azure-cli)
