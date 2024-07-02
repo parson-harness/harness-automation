@@ -1,10 +1,12 @@
-### Quick Start for spinning up an AKS cluster using Microsoft's TF
-This will spin up a 2-node AKS cluster in the centralus region in the Harness-SE subscription. The name of the cluster and resource group is a combination of the variables.tf settings and a randomly generated animal name. 
+### Quick Start for spinning up an AKS cluster
+This will spin up a 2-node AKS cluster in the centralus region in the Harness-SE subscription. The name of the cluster and resource group is a combination of the variables.tf settings and a randomly generated animal name using [random_pet](https://registry.terraform.io/providers/hashicorp/random/latest/docs/resources/pet).
 
 #### Reference
-https://learn.microsoft.com/en-us/azure/aks/learn/quick-kubernetes-deploy-terraform?tabs=bash&pivots=development-environment-azure-cli
+* [Azure tutorial](https://learn.microsoft.com/en-us/azure/aks/learn/quick-kubernetes-deploy-terraform?tabs=bash&pivots=development-environment-azure-cli)
+* [Azure tutorial GH repo with TF code](https://github.com/Azure/terraform/tree/master/quickstart/201-k8s-cluster-with-tf-and-aks)
 
-##### Setup
+#### Setup
+Make sure you have Terraform, the Azure CLI, and kubectl installed locally. 
 1. Setup your CLI environment<br>
 ```az login```<br>
 ```az account show```<br>
@@ -23,4 +25,3 @@ https://learn.microsoft.com/en-us/azure/aks/learn/quick-kubernetes-deploy-terraf
 ```echo "$(terraform output kube_config)" > ./azurek8s```
 7. Set an env to be picked up by kubectl<br>
 ```export KUBECONFIG=./azurek8s```
-8. 
