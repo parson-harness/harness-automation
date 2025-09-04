@@ -1,0 +1,5 @@
+# Ignore specific YAML files
+
+# Ignore lines with specific secret patterns
+DELEGATE_TOKEN:
+UPGRADER_TOKEN:
