@@ -34,7 +34,7 @@ resource "aws_iam_policy" "custom_node_policy_describe_regions" {
   description = "Allow EKS worker nodes to ec2:DescribeRegions (scoped to ${local.cluster_name})"
 
   policy = jsonencode({
-    Version   = "2012-10-17"
+    Version = "2012-10-17"
     Statement = [{
       Sid      = "AllowDescribeRegions"
       Effect   = "Allow"
@@ -112,11 +112,13 @@ module "eks" {
     ami_type = "AL2_x86_64"
   }
 
+  cluster_timeouts = { delete = "60m" }
   eks_managed_node_groups = {
     one = {
-      name           = "node-group-1"
+      name            = "node-group-1"
       use_name_prefix = false
-      subnet_ids     = module.vpc.public_subnets
+      subnet_ids      = module.vpc.public_subnets
+      timeouts        = { delete = "60m" }
 
       tags           = { owner = var.tag_owner }
       instance_types = [var.instance_type]
@@ -131,9 +133,10 @@ module "eks" {
     }
 
     two = {
-      name           = "node-group-2"
+      name            = "node-group-2"
       use_name_prefix = false
-      subnet_ids     = module.vpc.public_subnets
+      subnet_ids      = module.vpc.public_subnets
+      timeouts        = { delete = "60m" }
 
       tags           = { owner = var.tag_owner }
       instance_types = [var.instance_type]
