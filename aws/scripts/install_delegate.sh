@@ -12,7 +12,7 @@ IRSA_ROLE_ARN="${IRSA_ROLE_ARN:-$(terraform output -raw delegate_role_arn 2>/dev
 DELEGATE_NAME="${DELEGATE_NAME:-${CLUSTER_NAME}-delegate}"
 HARNESS_ACCOUNT_ID="${HARNESS_ACCOUNT_ID:?set HARNESS_ACCOUNT_ID env var}"
 DELEGATE_TOKEN="${DELEGATE_TOKEN:?set DELEGATE_TOKEN env var}"
-MANAGER_ENDPOINT="${MANAGER_ENDPOINT:-https://app.harness.io}"
+MANAGER_ENDPOINT="${MANAGER_ENDPOINT:-https://app.harness.io/gratis}"
 DELEGATE_REPLICAS="${DELEGATE_REPLICAS:-1}"
 
 # --- resolve delegate image tag from Docker Hub if not provided ---

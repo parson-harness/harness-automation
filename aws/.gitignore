@@ -27,3 +27,5 @@ override.tf.json
 terraform.rc
 planoutput.txt
 plan.txt
+
+*.DS_Store*
