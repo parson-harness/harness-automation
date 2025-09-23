@@ -8,3 +8,5 @@ azure/.terraform/providers/registry.terraform.io/hashicorp/time/0.9.1/darwin_arm
 azure/main.tfplan
 azure/azurek8s
 *.DS_Store*
+.DS_Store
+.DS_Store

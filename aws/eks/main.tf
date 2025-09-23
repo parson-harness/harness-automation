@@ -16,8 +16,7 @@ data "aws_region" "current" {}
 data "aws_partition" "current" {}
 
 locals {
-  cluster_name = "parson-eks"
-  #cluster_name = "${var.cluster}-${var.tag_owner}"
+  cluster_name = "${var.cluster}-${var.tag_owner}"
 
   # Keep naming simple and collision-proof via name_prefix (no regex needed)
   policy_pref = "eks-${local.cluster_name}-describe-regions-"
@@ -101,7 +100,7 @@ module "eks" {
   version = "20.8.5"
 
   cluster_name    = local.cluster_name
-  cluster_version = "1.29"
+  cluster_version = "1.33"
 
   enable_irsa = true
 

@@ -1,7 +1,8 @@
 # aws/iam-irsa/variables.tf
 variable "cluster_name" {
-  description = "Name of the existing EKS cluster"
+  description = "EKS cluster name (required when resolve_from_cluster = true)"
   type        = string
+  default     = null
 }
 
 variable "namespace" {
@@ -23,9 +24,21 @@ variable "role_name" {
 }
 
 variable "oidc_provider_arn" {
-  description = "Existing OIDC provider ARN (optional). If not set, it will be looked up from the cluster."
+  description = "Existing OIDC provider ARN (set when creating EKS in same apply)."
   type        = string
   default     = null
+}
+
+variable "oidc_issuer_url" {
+  description = "OIDC issuer URL (optional alternative to ARN when using existing cluster)."
+  type        = string
+  default     = null
+}
+
+variable "resolve_from_cluster" {
+  description = "If true, read the cluster to discover OIDC (standalone mode). If false, rely on oidc_provider_arn / oidc_issuer_url passed in."
+  type        = bool
+  default     = true
 }
 
 variable "inline_policy_json" {

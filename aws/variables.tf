@@ -52,3 +52,20 @@ variable "assume_role_arns" {
   type        = list(string)
   default     = []
 }
+
+# Root toggles to support both paths:
+variable "create_eks" {
+  description = "If true, create a new EKS cluster. If false, use an existing cluster."
+  type        = bool
+  default     = true
+}
+
+variable "existing_cluster_name" {
+  description = "Name of an existing EKS cluster (used when create_eks=false)"
+  type        = string
+  default     = null
+  validation {
+    condition     = var.create_eks || (try(length(var.existing_cluster_name), 0) > 0)
+    error_message = "When create_eks is false, you must set existing_cluster_name."
+  }
+}

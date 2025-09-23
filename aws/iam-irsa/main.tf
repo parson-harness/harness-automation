@@ -6,27 +6,42 @@ terraform {
   }
 }
 
+# Only read the cluster if explicitly told to (standalone mode)
 data "aws_eks_cluster" "this" {
-  name = var.cluster_name
+  count = var.resolve_from_cluster ? 1 : 0
+  name  = var.cluster_name
 }
 
-# Resolve/derive the OIDC provider
 locals {
-  oidc_issuer_url = data.aws_eks_cluster.this.identity[0].oidc[0].issuer
+  # Safe: null if both are unknown; precondition on the role enforces non-null at apply.
+  effective_oidc_issuer_url = try(
+    coalesce(
+      var.oidc_issuer_url,
+      try(data.aws_eks_cluster.this[0].identity[0].oidc[0].issuer, null)
+    ),
+    null
+  )
+
+  effective_oidc_provider_arn = coalesce(
+    var.oidc_provider_arn,
+    try(data.aws_iam_openid_connect_provider.by_url[0].arn, null)
+  )
+
+  sa_sub                 = "system:serviceaccount:${var.namespace}:${var.service_account_name}"
+  effective_cluster_name = coalesce(var.cluster_name, "unknown-cluster")
 }
 
-data "aws_iam_openid_connect_provider" "this" {
-  # If caller provided an ARN, use that; else look up by URL
-  arn = var.oidc_provider_arn != null ? var.oidc_provider_arn : null
 
-  # Lookup by URL when ARN not provided
-  url = var.oidc_provider_arn == null ? local.oidc_issuer_url : null
+# Only look up the OIDC provider by URL when we are resolving from an existing cluster.
+# Count depends ONLY on a simple variable (known at plan time).
+data "aws_iam_openid_connect_provider" "by_url" {
+  count = var.resolve_from_cluster ? 1 : 0
+  url = coalesce(
+    var.oidc_issuer_url,
+    try(data.aws_eks_cluster.this[0].identity[0].oidc[0].issuer, null)
+  )
 }
 
-# k8s SA subject that will assume the role
-locals {
-  sa_sub = "system:serviceaccount:${var.namespace}:${var.service_account_name}"
-}
 
 data "aws_partition" "current" {}
 
@@ -36,29 +51,36 @@ data "aws_iam_policy_document" "trust" {
     actions = ["sts:AssumeRoleWithWebIdentity"]
     principals {
       type        = "Federated"
-      identifiers = [data.aws_iam_openid_connect_provider.this.arn]
+      identifiers = [local.effective_oidc_provider_arn]
     }
     condition {
       test     = "StringEquals"
-      variable = "${replace(local.oidc_issuer_url, "https://", "")}:sub"
+      variable = "${replace(local.effective_oidc_issuer_url, "https://", "")}:sub"
       values   = [local.sa_sub]
     }
     condition {
       test     = "StringEquals"
-      variable = "${replace(local.oidc_issuer_url, "https://", "")}:aud"
+      variable = "${replace(local.effective_oidc_issuer_url, "https://", "")}:aud"
       values   = ["sts.amazonaws.com"]
     }
   }
 }
 
 resource "aws_iam_role" "delegate" {
-  name               = coalesce(var.role_name, "${var.cluster_name}-${var.namespace}-${var.service_account_name}-irsa")
+  name               = coalesce(var.role_name, "${local.effective_cluster_name}-${var.namespace}-${var.service_account_name}-irsa")
   assume_role_policy = data.aws_iam_policy_document.trust.json
-  description        = "IRSA role for Harness delegate on ${var.cluster_name} (${var.namespace}/${var.service_account_name})"
+  description        = "IRSA role for Harness delegate on ${local.effective_cluster_name} (${var.namespace}/${var.service_account_name})"
   tags = {
     managed-by = "terraform"
     component  = "harness-delegate"
-    cluster    = var.cluster_name
+    cluster    = local.effective_cluster_name
+  }
+
+  lifecycle {
+    precondition {
+      condition     = local.effective_oidc_provider_arn != null && local.effective_oidc_issuer_url != null
+      error_message = "OIDC not resolved. If creating EKS in the same apply, set resolve_from_cluster=false and pass both oidc_provider_arn and oidc_issuer_url."
+    }
   }
 }
 
