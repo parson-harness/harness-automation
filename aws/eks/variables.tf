@@ -1,10 +1,4 @@
-# aws/variables.tf
-variable "region" {
-  description = "AWS region for all stacks"
-  type        = string
-  default     = "us-east-1"
-}
-
+# aws/eks/variables.tf
 variable "cluster" {
   description = "Base name for the EKS cluster (will be suffixed with tag_owner)"
   type        = string

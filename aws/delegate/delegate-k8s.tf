@@ -8,7 +8,7 @@ variable "delegate_cluster_admin" {
 resource "kubernetes_namespace_v1" "delegate" {
   metadata {
     name   = var.delegate_namespace
-    labels = { owner = var.tag_owner }
+    labels = { Owner = var.tag_owner }
   }
   depends_on = [module.eks] # ensure cluster exists first
 }
@@ -17,7 +17,7 @@ resource "kubernetes_service_account_v1" "delegate" {
   metadata {
     name      = var.delegate_service_account
     namespace = kubernetes_namespace_v1.delegate.metadata[0].name
-    labels    = { owner = var.tag_owner }
+    labels    = { Owner = var.tag_owner }
     annotations = {
       "eks.amazonaws.com/role-arn" = module.irsa_delegate.iam_role_arn
     }
