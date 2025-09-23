@@ -1,201 +1,148 @@
-# EKS POV Cluster + Harness Delegate (Terraform + Helm)
+# Harness AWS Automation — EKS + IRSA + Delegate
 
-This repo spins up an **EKS cluster** for Harness Runners and installs a **Harness Kubernetes Delegate** with **IRSA**. It’s optimized for quick spin-up/tear-down, sane defaults, and a one-command delegate install.
+This repo lets you do **either** of the following, using the same codebase:
+
+- **Create everything**: VPC, EKS, and the IAM role (IRSA) the Harness Delegate uses.
+- **Use an existing EKS**: Only create the IAM permissions (IRSA) and then install the Delegate.
+
+Designed for Harness SEs *and* customers. The setup is **decoupled**, so you can run each part independently.
 
 ---
 
-## What you get
+## Contents
 
-- VPC (public + private subnets), IGW, optional NAT (public node groups by default to avoid NAT/EIP limits)
-- EKS cluster (1.29), two managed node groups (public subnets)
-- IRSA role for the Harness delegate with practical permissions:
-  - ECR push/pull (optionally scope to a repo prefix)
-  - ECS deploy actions with constrained `iam:PassRole` (`harness-ecs-*`)
-  - Utility read-only (EC2/EKS/ELB/ASG/CloudFormation) + CloudWatch Logs write
-  - Optional S3 bucket read/write (when `artifacts_bucket` set)
-  - Optional cross-account `sts:AssumeRole` (when `assume_role_arns` set)
-- Terraform-managed **Namespace** and **ServiceAccount** for the delegate
-- A helper script to install/upgrade the delegate via Helm
+- [`backend-bootstrap/`](./backend-bootstrap) – one-time S3 + DynamoDB creation for remote Terraform state
+- [`eks/`](./eks) – EKS cluster (VPC, EKS, node groups, OIDC outputs)
+- [`iam-irsa/`](./iam-irsa) – IAM role & policy for the Harness Delegate via **IRSA**
+- [`delegate/`](./delegate) – scripts to **install** and **uninstall** the Delegate
+- `tf-init.sh` – initializes **remote state** for the root stack
+- `destroy.sh` – decoupled teardown: delegate, permissions, and/or cluster
+
+> **Remote state**: Bootstrap once in `backend-bootstrap/`, then run `./tf-init.sh` in this folder.
 
 ---
 
 ## Prerequisites
 
-- Terraform ≥ 1.5
-- AWS CLI configured with a role that can create EKS/VPC/IAM
-- `kubectl` and `helm` on your PATH
-- `curl` (and **optional `jq`** for nicer JSON parsing)
-- Harness **Account ID** and a **Delegate Token** (generated in the UI)
-
-> Examples assume **us-east-1**, but you can set any region via variables.
+- Terraform **v1.5+**
+- AWS CLI configured (`aws sts get-caller-identity` works)
+- `kubectl`, `helm`, and `jq`
+- IAM permissions to create the resources you choose (S3/Dynamo, EKS, IAM, etc.)
 
 ---
 
-## Quick start
-
-### 1) Configure variables
-Edit `variables.tf` or pass at apply time.
-
-- `cluster` (default: `parson-eks`)
-- `region` (default: `us-east-1`)
-- `tag_owner` (e.g., `parson`)
-- `instance_type` (default: `t3.large`)
-- `delegate_namespace` (default: `harness-delegate-ng`)
-- `delegate_service_account` (default: `harness-delegate`)
-- Optional:
-  - `ecr_repo_prefix` to scope ECR push/pull (else all repos)
-  - `artifacts_bucket` to enable S3 RW
-  - `assume_role_arns` (list of ARNs) to allow cross-account assumes
-
-### 2) Provision
+## One-time: create the S3 backend
 
 ```bash
+cd backend-bootstrap
 terraform init
-terraform apply -auto-approve
+terraform apply -auto-approve \
+  -var='bucket_name=<globally-unique-s3-bucket>' \
+  -var='region=us-east-1' \
+  -var='dynamodb_table=terraform-locks'
 ```
 
-On success you’ll see outputs like:
+Creates:
+- S3 bucket (versioned, encrypted, TLS-only) for **remote state**
+- DynamoDB table for **state locking**
 
-- `delegate_role_arn`
-- `delegate_service_account_annotation`
+---
 
-### 3) Get a Delegate Token
-
-In Harness UI → **Account Settings → Delegates → Add new delegate → Kubernetes → Helm Chart**. Note the **Account ID** and **Delegate Token**.
-
-### 4) Install the delegate
-
-Use the helper script (idempotent). It reuses the TF namespace/SA and patches **IRSA** if needed.
+## Initialize remote state for the root stack
 
 ```bash
-export HARNESS_ACCOUNT_ID="<your_account_id>"
-export DELEGATE_TOKEN="<delegate_token>"
-scripts/install_delegate.sh
+cd aws
+# Set once; both init and apply will reuse them
+export TF_VAR_tag_owner="Doe"          # used in names/tags and in the state key
+export TF_VAR_region="us-east-1"       # provider region
+
+./tf-init.sh           # uses backend.hcl + computed key
 ```
 
-The script will:
-- Resolve the **latest stable** delegate image tag (from Docker Hub), or optionally from the Harness API if you set `HARNESS_API_KEY`
-- Annotate the ServiceAccount with the IRSA role (`eks.amazonaws.com/role-arn`)
-- Grant cluster-admin via a **ClusterRoleBinding** (can be disabled with `DELEGATE_CLUSTER_ADMIN=false`)
-- `helm upgrade -i` the chart **harness-delegate/harness-delegate-ng**
-- Wait for the deployment and run an IRSA smoke test job (`aws sts get-caller-identity`)
+Use `./tf-init.sh --migrate` once if moving local → remote state.
 
 ---
 
-## Script options (env vars)
+## Root Variables & Defaults
 
-- **Required**
-  - `HARNESS_ACCOUNT_ID` – your account identifier
-  - `DELEGATE_TOKEN` – token from the UI
-- **Common**
-  - `MANAGER_ENDPOINT` – default `https://app.harness.io`
-  - `DELEGATE_IMAGE_PREFIX` – default `us-docker.pkg.dev/gar-prod-setup/harness-public/harness/delegate`; set to `harness/delegate` to pull from Docker Hub
-  - `DELEGATE_REPLICAS` – default `1`
-  - `DELEGATE_CLUSTER_ADMIN` – default `true` (set `false` to skip cluster-admin binding)
-  - `IRSA_SMOKETEST` – default `true`
-- **Advanced**
-  - `HARNESS_API_KEY` – if set, script will use the Harness API to fetch the version used in the account associated with the API key
-  - `HARNESS_API_BASE` – default `https://app.harness.io` (or `https://app.eu.harness.io`)
-  - `DELEGATE_IMAGE` – bypass auto-resolution and force an image (e.g., `harness/delegate:25.08.86600`)
+| Variable | Default | Purpose |
+|---|---|---|
+| `region` | `us-east-1` | AWS provider region |
+| `cluster` | `harness-eks` | Base cluster name (actual: `${cluster}-${tag_owner}`) |
+| `tag_owner` | `HarnessPOV` | Suffix for names and the `Owner` tag (set to **your last name**) |
+| `instance_type` | `t3.large` | EKS managed node group instance type |
+| `delegate_namespace` | `harness-delegate-ng` | K8s namespace for the Delegate |
+| `delegate_service_account` | `harness-delegate` | K8s ServiceAccount for the Delegate |
+| `artifacts_bucket` | `""` | Optional S3 bucket the Delegate can read/write |
+| `ecr_repo_prefix` | `""` | Optional ECR repo prefix for scoping push/pull |
+| `assume_role_arns` | `[]` | Optional extra role ARNs the Delegate may assume |
+| `create_eks` | `true` | Whether to create a **new** EKS cluster |
+| `existing_cluster_name` | `null` | Required if `create_eks=false` |
 
----
-
-## How IRSA & policies work here
-
-Terraform creates an OIDC-bound role for the delegate SA and attaches “buckets” of managed inline policies:
-
-- **ECR**: auth + push/pull; optionally constrained by `ecr_repo_prefix`
-- **ECS**: describe/list + (de)register task defs; create/update/delete services; `iam:PassRole` restricted to `arn:aws:iam::<acct>:role/harness-ecs-*` with `iam:PassedToService=ecs-tasks.amazonaws.com`
-- **Utility**: read-only describes across EC2/EKS/ELB/ASG/CloudFormation + CloudWatch Logs write
-- **S3 (optional)**: list bucket + RW objects for `artifacts_bucket`
-- **STS (optional)**: `sts:AssumeRole` to each ARN in `assume_role_arns`
-
-This gives a practical, not-wide-open access for POCs. Tighten further if needed.
+Effective cluster name: **`${var.cluster}-${var.tag_owner}`**.
 
 ---
 
-## Troubleshooting
+## Common flows
 
-### Helm: `context deadline exceeded`
-Helm waited 5 minutes and the deployment never became Ready. Find why:
+### A) Provision everything (EKS + IRSA), then install Delegate
 
 ```bash
-NS="harness-delegate-ng"
-NAME="$(terraform output -raw cluster_name 2>/dev/null || echo parson-eks)-delegate"
+cd aws
+terraform apply
 
-kubectl -n "$NS" get deploy,rs,po -o wide
-kubectl -n "$NS" describe deploy "$NAME" | sed -n '1,160p'
-kubectl -n "$NS" get events --sort-by=.metadata.creationTimestamp | tail -n 120
-
-POD="$(kubectl -n "$NS" get po -l app.kubernetes.io/instance=helm-delegate -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
-if [ -n "$POD" ]; then
-  kubectl -n "$NS" describe pod "$POD" | sed -n '1,200p'
-  kubectl -n "$NS" logs "$POD" --container delegate --tail=200 || true
-fi
+# Install delegate via Helm (release name auto = sanitized DELEGATE_NAME)
+DELEGATE_NAME="demo-delegate" HARNESS_ACCOUNT_ID="<your-harness-account>" DELEGATE_TOKEN="<a-secure-token>" IRSA_ROLE_ARN="$(terraform output -raw delegate_role_arn)" ./delegate/install_delegate.sh
 ```
 
-Common causes & quick fixes:
-- **`ImagePullBackOff`** → egress/registry issue. Set `DELEGATE_IMAGE_PREFIX=harness/delegate` (Docker Hub) and retry. Increase wait: `--timeout 10m`.
-- **`Pending` (no nodes / taints / resources)** → lower requests and retry:
-  ```bash
-  helm upgrade helm-delegate -n "$NS" harness-delegate/harness-delegate-ng --reuse-values     --set resources.requests.cpu=100m --set resources.requests.memory=256Mi     --set resources.limits.cpu=500m --set resources.limits.memory=1Gi     --wait --timeout 10m
-  ```
-- **`CrashLoopBackOff`** or **not Ready** but Running:
-  - Invalid token → issue a new token in UI and `--set-string delegateToken="$NEW_TOKEN"`
-  - Wrong endpoint → for free/community, use `MANAGER_ENDPOINT=https://app.harness.io/gratis`
-  - DNS/egress blocked to `app.harness.io` → verify with a busybox/curl test from a pod
+Verify:
+```bash
+kubectl -n harness-delegate-ng get pods,sa,cronjob
+helm -n harness-delegate-ng list
+```
 
-### EKS nodes can’t reach the internet
-If you place nodes in **private subnets**, you must have a working **NAT Gateway + EIP quota**. For POVs, this repo uses **public subnets for node groups** to avoid NAT/EIP quota issues.
+### B) Use an existing EKS (IRSA + Delegate only)
+
+```bash
+cd aws
+terraform apply   -var="create_eks=false"   -var="existing_cluster_name=<your-existing-eks-name>"
+
+DELEGATE_NAME="demo-delegate" HARNESS_ACCOUNT_ID="<your-harness-account>" DELEGATE_TOKEN="<a-secure-token>" ./delegate/install_delegate.sh
+```
 
 ---
 
 ## Uninstall / Destroy
 
-### Uninstall the delegate (keep cluster)
+### Remove delegates (Helm)
+
 ```bash
-helm uninstall helm-delegate -n harness-delegate-ng || true
-kubectl delete clusterrolebinding harness-delegate-admin || true
+# by delegate name (release auto-resolved)
+./destroy.sh --delegate --delegate-name demo-delegate --yes
+
+# or list first
+./destroy.sh --delegate --list
 ```
 
-### Destroy all infra
+Options: `--release <name>`, `--pattern "glob"`, `--delete-namespace`.
+
+### Decoupled infra teardown
+
 ```bash
-terraform destroy
+# IAM/IRSA only
+./destroy.sh --permissions --yes
+
+# Cluster (EKS + VPC)
+./destroy.sh --cluster --yes
+
+# Everything: delegate -> permissions -> cluster
+./destroy.sh --all --yes
 ```
 
-If node groups hang on destroy:
-1. Scale desired to 0 in the AWS Console or via CLI for the ASG(s)
-2. Delete stuck node groups with `aws eks delete-nodegroup ...`
-3. Re-run `terraform destroy`
-
 ---
 
-## Variables (high-level)
+## Troubleshooting
 
-- `cluster` (string) – cluster name
-- `region` (string)
-- `tag_owner` (string) – tag for ownership
-- `instance_type` (string) – node type for managed node groups
-- `delegate_namespace` (string) – default `harness-delegate-ng`
-- `delegate_service_account` (string) – default `harness-delegate`
-- `ecr_repo_prefix` (string, optional) – scope ECR RW
-- `artifacts_bucket` (string, optional) – enable S3 RW
-- `assume_role_arns` (list(string), optional) – allow cross-account
-
-## Outputs
-
-- `cluster_name`, `region`
-- `delegate_role_arn`
-- `delegate_service_account_annotation`
-
----
-
-## Notes
-
-- We rely on **name_prefix** for IAM policies to avoid collisions across POV runs.
-- The delegate auto-upgrader may roll to the account’s published version later; the install script only chooses a good initial image.
-- For EU accounts, set `MANAGER_ENDPOINT=https://app.eu.harness.io`.
-
----
-
-Happy shipping! 🚀
+- **Plan errors on data sources**: When creating EKS and IRSA together, the root passes OIDC ARN/issuer to IRSA and sets `resolve_from_cluster=false`. If you changed root wiring, restore that pattern.
+- **Remote state**: Re-run `./tf-init.sh --migrate` to move local → S3. Confirm with `terraform state list`.
+- **EKS module warning** about `inline_policy` deprecation is upstream; safe to ignore until they update.
