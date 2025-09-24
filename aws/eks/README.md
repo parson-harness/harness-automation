@@ -1,6 +1,6 @@
 # EKS Module
 
-Creates VPC, EKS (v1.29 by default), managed node groups, and exposes OIDC outputs for IRSA.
+Creates VPC, EKS (default v1.29 in this repo), managed node groups, and exposes OIDC outputs for IRSA.
 
 ## Inputs (selected)
 
@@ -9,6 +9,15 @@ Creates VPC, EKS (v1.29 by default), managed node groups, and exposes OIDC outpu
 - `instance_type` (default: `t3.large`) – worker nodes
 - `delegate_namespace` (default: `harness-delegate-ng`)
 - `delegate_service_account` (default: `harness-delegate`)
+
+### AMI Type
+The node groups use:
+```hcl
+eks_managed_node_group_defaults = {
+  ami_type = "AL2023_x86_64"
+}
+```
+This avoids the AWS API error rejecting AL2 for newer Kubernetes versions.
 
 ## Outputs
 

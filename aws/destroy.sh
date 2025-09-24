@@ -1,86 +1,49 @@
 #!/usr/bin/env bash
-# Teardown helper with decoupled options:
-#   --delegate       uninstall delegate(s) via Helm (and upgrader CronJob)
-#   --permissions    terraform destroy in aws/iam-irsa
-#   --cluster        terraform destroy in aws/eks
-#   --all            run delegate -> permissions -> cluster
-#
-# Extras for targeting delegates:
-#   --delegate-name <name>  uninstall release derived from this DELEGATE_NAME
-#   --release <name>        uninstall this Helm release (repeatable)
-#   --exclude <name>        exclude this Helm release (repeatable)
-#   --pattern "<glob>"      uninstall releases that match glob (e.g., "delegate-*")
-#   --list                  list target releases and exit
-#   --delete-namespace      delete the delegate namespace after uninstall
-#
-# Common:
-#   --namespace <ns>        delegate namespace (default: harness-delegate-ng)
-#   --eks-dir <path>        default: aws/eks
-#   --irsa-dir <path>       default: aws/iam-irsa
-#   --region <r>            AWS region (for kubeconfig update)
-#   --cluster-name <n>      EKS cluster name (for kubeconfig update)
-#   --yes                   auto-approve (skip confirmations)
-
+# Decoupled destroy helper (macOS/Bash 3.2 compatible, no arrays required)
+# - Delegate uninstall (by --delegate-name, --release, or --pattern)
+# - Optional: destroy permissions (IRSA) and/or cluster
+# - Reads Terraform outputs from root (aws/) if present; falls back to env
 set -euo pipefail
 
-say() { printf "\n==> %s\n" "$*"; }
-confirm() {
-  if [ "${AUTO_APPROVE:-false}" = "true" ]; then return 0; fi
-  read -rp "$1 [y/N]: " _ans
-  case "$_ans" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
-}
-usage() {
-  sed -n '2,200p' "$0" | sed -n '2,80p'
-  exit 1
-}
+say()  { printf "\n==> %s\n" "$*"; }
+warn() { printf "\nWARN: %s\n" "$*" >&2; }
+err()  { printf "\nERROR: %s\n" "$*" >&2; exit 1; }
 
 # ---------- defaults ----------
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="${ROOT_DIR:-$SCRIPT_DIR}"       # run from aws/ root ideally
+TERRAFORM_BIN="${TERRAFORM_BIN:-terraform}"
+
+REGION="${REGION:-}"
+CLUSTER_NAME="${CLUSTER_NAME:-}"
+NS="${NS:-harness-delegate-ng}"
+SA="${SA:-harness-delegate}"
+
 DO_DELEGATE=false
 DO_PERMISSIONS=false
 DO_CLUSTER=false
-AUTO_APPROVE="${AUTO_APPROVE:-false}"
-KUBECONFIG_UPDATE="${KUBECONFIG_UPDATE:-auto}"
+DO_ALL=false
 
-NS="${NS:-harness-delegate-ng}"
-EKS_DIR="${EKS_DIR:-aws/eks}"
-IRSA_DIR="${IRSA_DIR:-aws/iam-irsa}"
-
-DELEGATE_NAME_FILTER=""
-declare -a RELEASES EXCLUDES
-PATTERN=""
+CONFIRM=false
 LIST_ONLY=false
 DELETE_NAMESPACE=false
 
-# ---------- arg parsing ----------
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --delegate) DO_DELEGATE=true ;;
-    --permissions) DO_PERMISSIONS=true ;;
-    --cluster) DO_CLUSTER=true ;;
-    --all) DO_DELEGATE=true; DO_PERMISSIONS=true; DO_CLUSTER=true ;;
-    --namespace) shift; NS="$1" ;;
-    --eks-dir) shift; EKS_DIR="$1" ;;
-    --irsa-dir) shift; IRSA_DIR="$1" ;;
-    --region) shift; REGION="$1" ;;
-    --cluster-name) shift; CLUSTER_NAME="$1" ;;
-    --yes) AUTO_APPROVE=true ;;
-    --delegate-name) shift; DELEGATE_NAME_FILTER="$1" ;;
-    --release) shift; RELEASES+=("$1") ;;
-    --exclude) shift; EXCLUDES+=("$1") ;;
-    --pattern) shift; PATTERN="$1" ;;
-    --list) LIST_ONLY=true ;;
-    --delete-namespace) DELETE_NAMESPACE=true ;;
-    --help|-h) usage ;;
-    *) echo "Unknown option: $1"; usage ;;
-  esac
-  shift || true
-done
-
-if ! $DO_DELEGATE && ! $DO_PERMISSIONS && ! $DO_CLUSTER; then
-  echo "No actions specified. Use --delegate / --permissions / --cluster / --all"; usage
-fi
+# selections as simple space-separated strings (Bash 3.2 safe)
+DELEGATE_NAMES_S=""
+RELEASES_S=""
+PATTERNS_S=""
 
 # ---------- helpers ----------
+tf_output_root() {
+  local key="$1" val=""
+  if val="$("$TERRAFORM_BIN" -chdir="$ROOT_DIR" output -raw "$key" 2>/dev/null || true)"; then :; fi
+  if [ -z "$val" ] || printf %s "$val" | grep -q "Warning: No outputs found"; then
+    echo ""
+  else
+    echo "$val"
+  fi
+}
+
 sanitize_release() {
   echo "$1" \
   | tr '[:upper:]' '[:lower:]' \
@@ -88,141 +51,192 @@ sanitize_release() {
   | cut -c1-53
 }
 
-tf_out() { terraform -chdir="$1" output -raw "$2" 2>/dev/null || true; }
-
-update_kubeconfig() {
-  if [ "${KUBECONFIG_UPDATE}" != "auto" ]; then return 0; fi
-  local region="${REGION:-}" cluster="${CLUSTER_NAME:-}"
-
-  # Try resolve from TF if not provided
-  if [ -z "$cluster" ] && [ -d "$EKS_DIR" ]; then cluster="$(tf_out "$EKS_DIR" cluster_name)"; fi
-  if [ -z "$region" ] && [ -d "$EKS_DIR" ]; then region="$(tf_out "$EKS_DIR" region)"; fi
-
-  if [ -n "$cluster" ] && [ -n "$region" ]; then
-    say "Updating kubeconfig for cluster '${cluster}' in ${region}"
-    aws eks --region "$region" update-kubeconfig --name "$cluster" >/dev/null 2>&1 || true
-  else
-    say "Skipping kubeconfig update (cluster/region not known)."
-  fi
+glob_to_ere() { # simple * and ?
+  local g="$1"
+  g="${g//./\\.}"; g="${g//\*/.*}"; g="${g//\?/.}"
+  echo "^${g}$"
 }
 
-# ---------- delegate uninstall ----------
-delete_delegate() {
-  say "Preparing to uninstall delegate(s) from namespace '${NS}'"
-  update_kubeconfig
+confirm() {
+  if $CONFIRM; then return 0; fi
+  printf "Proceed? [y/N] "
+  read ans || true
+  case "$ans" in y|Y|yes|YES) return 0;; *) echo "Aborted."; exit 1;; esac
+}
 
-  if ! kubectl get ns "$NS" >/dev/null 2>&1; then
-    say "Namespace '$NS' not found; nothing to do."
-    return 0
-  fi
+usage() {
+  cat <<EOF
+Usage: $0 [options]
 
-  local -a all_releases candidates
-  mapfile -t all_releases < <(helm -n "$NS" list --short 2>/dev/null | sed '/^$/d' || true)
+Delegate targets
+  --delegate                         Uninstall delegate(s)
+  --delegate-name <name>             Target by Delegate name (maps to Helm release via sanitize)
+  --release <helm-release>           Target exact Helm release
+  --pattern <glob>                   Target releases by glob (e.g., "pov-*")
+  --list                             List matching releases and exit
+  --delete-namespace                 Delete namespace after uninstall (if empty)
 
-  # If a delegate name is supplied, derive its release name directly
-  if [ -n "$DELEGATE_NAME_FILTER" ]; then
-    local rn; rn="$(sanitize_release "$DELEGATE_NAME_FILTER")"
-    if helm -n "$NS" status "$rn" >/dev/null 2>&1; then
-      candidates=("$rn")
-    else
-      say "No Helm release named '$rn' found in ns '$NS' for delegate '$DELEGATE_NAME_FILTER'."
-      return 0
-    fi
-  fi
+Infra targets (optional)
+  --permissions                      Destroy IRSA/permissions (module: iam_irsa)
+  --cluster                          Destroy EKS/VPC (module: eks)
+  --all                              Do everything (delegate -> permissions -> cluster)
 
-  # If no delegate name, add any explicitly requested releases
-  if [ ${#RELEASES[@]} -gt 0 ]; then
-    for r in "${RELEASES[@]}"; do
-      if printf '%s\n' "${all_releases[@]}" | grep -qx "$r"; then
-        candidates+=("$r")
-      else
-        say "WARNING: release '$r' not found in ns '$NS'; skipping."
-      fi
-    done
-  fi
+General
+  --ns <namespace>                   Namespace (default: harness-delegate-ng)
+  --region <aws-region>              e.g., us-east-1 (defaults from terraform output "region")
+  --cluster-name <eks-name>          (defaults from terraform output "cluster_name")
+  --yes                              Non-interactive
+  -h | --help                        Show help
+EOF
+}
 
-  # If still none, detect Harness delegate charted releases
-  if [ ${#candidates[@]} -eq 0 ]; then
-    for r in "${all_releases[@]}"; do
-      if helm -n "$NS" status "$r" 2>/dev/null | grep -qi 'harness-delegate-ng'; then
-        candidates+=("$r")
-      fi
-    done
-  fi
+# ---------- args ----------
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --delegate) DO_DELEGATE=true;;
+    --permissions) DO_PERMISSIONS=true;;
+    --cluster) DO_CLUSTER=true;;
+    --all) DO_ALL=true;;
+    --delegate-name) shift; DELEGATE_NAMES_S="${DELEGATE_NAMES_S}${DELEGATE_NAMES_S:+ }$1";;
+    --release) shift; RELEASES_S="${RELEASES_S}${RELEASES_S:+ }$1";;
+    --pattern) shift; PATTERNS_S="${PATTERNS_S}${PATTERNS_S:+ }$1";;
+    --list) LIST_ONLY=true;;
+    --delete-namespace) DELETE_NAMESPACE=true;;
+    --ns) shift; NS="$1";;
+    --region) shift; REGION="$1";;
+    --cluster-name) shift; CLUSTER_NAME="$1";;
+    --yes) CONFIRM=true;;
+    -h|--help) usage; exit 0;;
+    *) err "Unknown arg: $1";;
+  esac
+  shift || true
+done
 
-  # Apply pattern filter if provided
-  if [ -n "$PATTERN" ]; then
-    local -a filtered; filtered=()
-    for r in "${candidates[@]}"; do
-      [[ "$r" == $PATTERN ]] && filtered+=("$r")
-    done
-    candidates=("${filtered[@]}")
-  fi
+$DO_ALL && { DO_DELEGATE=true; DO_PERMISSIONS=true; DO_CLUSTER=true; }
 
-  # Apply excludes
-  if [ ${#EXCLUDES[@]} -gt 0 ]; then
-    local -a kept; kept=()
-    for r in "${candidates[@]}"; do
-      local skip=false
-      for x in "${EXCLUDES[@]}"; do
-        [[ "$r" == "$x" ]] && { skip=true; break; }
-      done
-      $skip || kept+=("$r")
-    done
-    candidates=("${kept[@]}")
-  fi
+if ! $DO_DELEGATE && ! $DO_PERMISSIONS && ! $DO_CLUSTER; then
+  usage; exit 1
+fi
 
-  # De-dup
-  if [ ${#candidates[@]} -gt 1 ]; then
-    readarray -t candidates < <(printf '%s\n' "${candidates[@]}" | awk '!seen[$0]++')
-  fi
+# ---------- resolve TF outputs ----------
+REGION="${REGION:-$(tf_output_root region)}"
+CLUSTER_NAME="${CLUSTER_NAME:-$(tf_output_root cluster_name)}"
 
-  if [ ${#candidates[@]} -eq 0 ]; then
-    say "No delegate Helm releases selected in ns '$NS'."
-    return 0
-  fi
+# ---------- kubeconfig ----------
+if [ -n "$REGION" ] && [ -n "$CLUSTER_NAME" ]; then
+  say "Updating kubeconfig for cluster '$CLUSTER_NAME' in $REGION"
+  aws eks --region "$REGION" update-kubeconfig --name "$CLUSTER_NAME" >/dev/null 2>&1 || true
+fi
 
-  say "Selected releases in '$NS': ${candidates[*]}"
-  $LIST_ONLY && { say "--list requested; exiting."; return 0; }
+# ---------- selection ----------
+resolve_targets() {
+  # build newline-separated list
+  local out="" n r p rgx all rel
 
-  confirm "Uninstall the releases above from namespace '$NS'?" || { say "Skipped delegate uninstall."; return 0; }
-
-  for r in "${candidates[@]}"; do
-    say "Uninstalling Helm release '$r' (ns=$NS)…"
-    helm -n "$NS" uninstall "$r" --wait --timeout 5m || true
+  # from --delegate-name (map to sanitized release)
+  for n in $DELEGATE_NAMES_S; do
+    out="${out}$(sanitize_release "$n")"$'\n'
   done
 
-  # Upgrader CronJob cleanup (best-effort)
-  kubectl -n "$NS" delete cronjob harness-upgrader --ignore-not-found=true >/dev/null 2>&1 || true
-  kubectl -n "$NS" delete cronjob -l app=harness-upgrader --ignore-not-found=true >/dev/null 2>&1 || true
+  # from --release (as-is)
+  for r in $RELEASES_S; do
+    out="${out}${r}"$'\n'
+  done
 
-  if $DELETE_NAMESPACE; then
-    say "Deleting namespace '$NS'…"
-    kubectl delete ns "$NS" --wait=true || true
+  # from --pattern
+  if [ -n "$PATTERNS_S" ]; then
+    all="$(helm -n "$NS" list -q 2>/dev/null || true)"
+    for p in $PATTERNS_S; do
+      rgx="$(glob_to_ere "$p")"
+      # iterate releases
+      printf "%s\n" "$all" | while IFS= read -r rel; do
+        [ -z "$rel" ] && continue
+        echo "$rel" | grep -Eq "$rgx" && out="${out}${rel}"$'\n'
+      done
+    done
   fi
 
-  say "Delegate uninstall complete."
+  # dedupe and print
+  if [ -n "$out" ]; then
+    printf "%s" "$out" | awk 'NF && !seen[$0]++'
+  fi
 }
 
-# ---------- terraform destroy helpers ----------
-tf_destroy() {
-  local dir="$1"
-  if [ ! -d "$dir" ]; then
-    say "Directory '$dir' not found; skipping."
-    return 0
-  fi
-  say "Running 'terraform destroy' in $dir"
-  terraform -chdir="$dir" init -upgrade >/dev/null
-  if [ "${AUTO_APPROVE}" = "true" ]; then
-    terraform -chdir="$dir" destroy -auto-approve
+uninstall_delegate_release() {
+  local rel="$1"
+  say "Uninstalling Helm release '$rel' in namespace '$NS'"
+  helm -n "$NS" uninstall "$rel" --wait --timeout 5m >/dev/null 2>&1 || warn "Release '$rel' not found or already removed."
+
+  # Clean upgrader CronJobs (label-based)
+  say "Cleaning upgrader CronJobs and leftovers for '$rel'"
+  kubectl -n "$NS" delete cronjob -l "app.kubernetes.io/instance=${rel},app.kubernetes.io/name=harness-delegate-ng" --ignore-not-found=true >/dev/null 2>&1 || true
+
+  # Fallback heuristic if labels differ
+  for cj in $(kubectl -n "$NS" get cronjobs -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true); do
+    case "$cj" in
+      *"$rel"*upgrad* ) kubectl -n "$NS" delete cronjob "$cj" --ignore-not-found=true >/dev/null 2>&1 || true ;;
+    esac
+  done
+
+  # Secrets/configmaps tied to release
+  kubectl -n "$NS" delete secret -l "app.kubernetes.io/instance=${rel}" --ignore-not-found=true >/dev/null 2>&1 || true
+  kubectl -n "$NS" delete configmap -l "app.kubernetes.io/instance=${rel}" --ignore-not-found=true >/dev/null 2>&1 || true
+}
+
+delete_namespace_if_requested() {
+  $DELETE_NAMESPACE || return 0
+  say "Attempting to delete namespace '$NS' (if empty)"
+  local remaining
+  remaining="$(helm -n "$NS" list -q 2>/dev/null | wc -l | tr -d ' ')"
+  if [ "$remaining" = "0" ]; then
+    kubectl delete namespace "$NS" --ignore-not-found=true >/dev/null 2>&1 || true
   else
-    terraform -chdir="$dir" destroy
+    warn "Namespace '$NS' still has Helm releases; not deleting."
   fi
 }
 
-# ---------- execute in safe order ----------
-$DO_DELEGATE    && delete_delegate
-$DO_PERMISSIONS && { say "Destroying IAM/IRSA stack in '$IRSA_DIR'…"; confirm "Proceed?" && tf_destroy "$IRSA_DIR" || say "Skipped permissions destroy."; }
-$DO_CLUSTER     && { say "Destroying EKS/VPC stack in '$EKS_DIR'…";   confirm "Proceed? (removes EKS control plane & nodes)" && tf_destroy "$EKS_DIR" || say "Skipped cluster destroy."; }
+destroy_permissions() {
+  say "Destroying IAM/IRSA permissions via Terraform (module iam_irsa)"
+  ( cd "$ROOT_DIR" && $TERRAFORM_BIN destroy -target=module.iam_irsa -auto-approve )
+}
 
-say "Teardown complete."
+destroy_cluster() {
+  say "Destroying EKS + VPC via Terraform (module eks)"
+  ( cd "$ROOT_DIR" && $TERRAFORM_BIN destroy -target=module.eks -auto-approve )
+}
+
+# ---------- main ----------
+if $DO_DELEGATE; then
+  TARGETS_STR="$(resolve_targets || true)"
+
+  if $LIST_ONLY; then
+    say "Matching releases in namespace '$NS':"
+    if [ -z "$TARGETS_STR" ]; then echo "(none)"; else printf ' - %s\n' $TARGETS_STR; fi
+    exit 0
+  fi
+
+  # turn into a list safely for Bash 3.2
+  if [ -z "${TARGETS_STR:-}" ]; then
+    warn "No delegate releases matched your selection in namespace '$NS'."
+  else
+    say "About to uninstall these releases in ns '$NS':"
+    printf ' - %s\n' $TARGETS_STR
+    confirm
+    for rel in $TARGETS_STR; do
+      [ -n "$rel" ] && uninstall_delegate_release "$rel"
+    done
+    delete_namespace_if_requested
+  fi
+fi
+
+if $DO_PERMISSIONS; then
+  confirm
+  destroy_permissions
+fi
+
+if $DO_CLUSTER; then
+  confirm
+  destroy_cluster
+fi
+
+say "Done."

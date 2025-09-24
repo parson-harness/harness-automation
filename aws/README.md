@@ -9,6 +9,18 @@ Designed for Harness SEs *and* customers. The setup is **decoupled**, so you can
 
 ---
 
+## What changed recently (2025-09-23)
+
+- **Delegate install is sturdier:** the script now:
+  - uses the **official Helm repo** alias `harness-delegate` and chart `harness-delegate/harness-delegate-ng`,
+  - **dynamically resolves the latest** `harness/delegate` image tag from Docker Hub (Harness API fallback),
+  - writes a **temporary `values.yaml`** so everything is properly **quoted** (fixes YAML parse errors and invalid image names),
+  - maps **`DELEGATE_NAME → Helm release` 1:1**, so multiple delegates per cluster work cleanly.
+- **Destroy script is macOS-safe** (Bash 3.2 compatible) and can uninstall a delegate by **name** without touching IRSA/cluster.
+- **EKS nodegroups use `AL2023_x86_64`** by default to avoid AL2 incompatibility on newer Kubernetes.
+
+---
+
 ## Contents
 
 - [`backend-bootstrap/`](./backend-bootstrap) – one-time S3 + DynamoDB creation for remote Terraform state
@@ -16,7 +28,7 @@ Designed for Harness SEs *and* customers. The setup is **decoupled**, so you can
 - [`iam-irsa/`](./iam-irsa) – IAM role & policy for the Harness Delegate via **IRSA**
 - [`delegate/`](./delegate) – scripts to **install** and **uninstall** the Delegate
 - `tf-init.sh` – initializes **remote state** for the root stack
-- `destroy.sh` – decoupled teardown: delegate, permissions, and/or cluster
+- `destroy.sh` – decoupled teardown: delegate, permissions, and/or cluster (mac-safe)
 
 > **Remote state**: Bootstrap once in `backend-bootstrap/`, then run `./tf-init.sh` in this folder.
 
@@ -26,7 +38,8 @@ Designed for Harness SEs *and* customers. The setup is **decoupled**, so you can
 
 - Terraform **v1.5+**
 - AWS CLI configured (`aws sts get-caller-identity` works)
-- `kubectl`, `helm`, and `jq`
+- `kubectl`, `helm`, and `jq` (jq optional but speeds up tag resolution)
+- `curl` (used to resolve the latest delegate image tag)
 - IAM permissions to create the resources you choose (S3/Dynamo, EKS, IAM, etc.)
 
 ---
@@ -91,8 +104,11 @@ Effective cluster name: **`${var.cluster}-${var.tag_owner}`**.
 cd aws
 terraform apply
 
-# Install delegate via Helm (release name auto = sanitized DELEGATE_NAME)
-DELEGATE_NAME="demo-delegate" HARNESS_ACCOUNT_ID="<your-harness-account>" DELEGATE_TOKEN="<a-secure-token>" IRSA_ROLE_ARN="$(terraform output -raw delegate_role_arn)" ./delegate/install_delegate.sh
+# Install delegate (latest image auto-resolved; IRSA auto read from TF outputs if present)
+export HARNESS_ACCOUNT_ID="<your-harness-account>"
+export DELEGATE_TOKEN="<a-secure-token>"
+export DELEGATE_NAME="demo-delegate"
+./delegate/install_delegate.sh
 ```
 
 Verify:
@@ -105,9 +121,14 @@ helm -n harness-delegate-ng list
 
 ```bash
 cd aws
-terraform apply   -var="create_eks=false"   -var="existing_cluster_name=<your-existing-eks-name>"
+terraform apply \
+  -var="create_eks=false" \
+  -var="existing_cluster_name=<your-existing-eks-name>"
 
-DELEGATE_NAME="demo-delegate" HARNESS_ACCOUNT_ID="<your-harness-account>" DELEGATE_TOKEN="<a-secure-token>" ./delegate/install_delegate.sh
+export HARNESS_ACCOUNT_ID="<your-harness-account>"
+export DELEGATE_TOKEN="<a-secure-token>"
+export DELEGATE_NAME="demo-delegate"
+./delegate/install_delegate.sh
 ```
 
 ---
@@ -117,16 +138,16 @@ DELEGATE_NAME="demo-delegate" HARNESS_ACCOUNT_ID="<your-harness-account>" DELEGA
 ### Remove delegates (Helm)
 
 ```bash
-# by delegate name (release auto-resolved)
+# by delegate name (release auto-resolved 1:1)
 ./destroy.sh --delegate --delegate-name demo-delegate --yes
 
-# or list first
-./destroy.sh --delegate --list
+# or preview first
+./destroy.sh --delegate --pattern "demo-*" --list
 ```
 
 Options: `--release <name>`, `--pattern "glob"`, `--delete-namespace`.
 
-### Decoupled infra teardown
+### Decoupled infra teardown (optional)
 
 ```bash
 # IAM/IRSA only
@@ -143,6 +164,22 @@ Options: `--release <name>`, `--pattern "glob"`, `--delete-namespace`.
 
 ## Troubleshooting
 
-- **Plan errors on data sources**: When creating EKS and IRSA together, the root passes OIDC ARN/issuer to IRSA and sets `resolve_from_cluster=false`. If you changed root wiring, restore that pattern.
-- **Remote state**: Re-run `./tf-init.sh --migrate` to move local → S3. Confirm with `terraform state list`.
-- **EKS module warning** about `inline_policy` deprecation is upstream; safe to ignore until they update.
+- **YAML parse error / invalid image name** during Helm install:
+  - The installer now generates a **temp values.yaml** and quotes all strings.
+  - It also prints progress to **stderr** and only the final image value to **stdout**, so Helm never receives logging noise as a value.
+
+- **Plan errors on data sources**: When creating EKS and IRSA together, the root passes OIDC ARN/issuer to IRSA and sets `resolve_from_cluster=false`.
+
+- **Nodegroup error “AL2_x86_64 is only supported for versions ≤ 1.32”**:
+  - Nodegroups default to `AL2023_x86_64`. If you forked earlier code, update `eks_managed_node_group_defaults.ami_type`.
+
+---
+
+## Notes
+
+- Names and tags include your `tag_owner` so resources are easy to find in the AWS account.
+- Backends are **configured at init time** (variables are not available to backend configs), so use `tf-init.sh`.
+
+---
+> **Quickstart added (2025-09-23)**  
+See [`QUICKSTART.md`](./QUICKSTART.md) for the fastest end-to-end path, including the exact env vars and commands to run.

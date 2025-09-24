@@ -31,3 +31,10 @@ export TF_VAR_region="us-east-1"
 ./tf-init.sh
 terraform apply -auto-approve -var="cluster_name=${CLUSTER_NAME}"
 ```
+
+## Teardown
+Use the root script for a targeted destroy:
+```bash
+cd aws
+./destroy.sh --permissions --yes
+```
