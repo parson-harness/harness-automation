@@ -9,7 +9,7 @@
 If not done yet:
 
 ```bash
-cd aws/backend-bootstrap
+cd aws/modules/backend-bootstrap
 terraform init
 terraform apply -auto-approve \
   -var='bucket_name=<globally-unique-s3-bucket>' \
@@ -22,7 +22,7 @@ Then initialize the root to use that backend:
 ```bash
 cd aws
 export TF_VAR_region="us-east-1"        # provider region
-export TF_VAR_tag_owner="Doe"           # will suffix resource names/tags
+export TF_VAR_tag_owner="Parson"           # will suffix resource names/tags
 ./tf-init.sh
 ```
 
@@ -41,7 +41,7 @@ terraform apply
 export HARNESS_ACCOUNT_ID="<your-harness-account>"
 export DELEGATE_TOKEN="<your-delegate-token>"     # from Harness UI
 export DELEGATE_NAME="demo-delegate"              # unique per namespace
-./delegate/install_delegate.sh
+./modules/delegate/install_delegate.sh
 ```
 
 ### 3) Verify
@@ -67,7 +67,7 @@ terraform apply \
 export HARNESS_ACCOUNT_ID="<your-harness-account>"
 export DELEGATE_TOKEN="<your-delegate-token>"
 export DELEGATE_NAME="demo-delegate"
-./delegate/install_delegate.sh
+./modules/delegate/install_delegate.sh
 ```
 
 ---
@@ -81,7 +81,7 @@ cd aws
 export HARNESS_ACCOUNT_ID="..."
 export DELEGATE_TOKEN="..."
 export DELEGATE_NAME="demo-delegate"
-./delegate/install_delegate.sh
+./modules/delegate/install_delegate.sh
 ```
 
 ---
@@ -126,7 +126,7 @@ export DELEGATE_NAME="demo-delegate"
 
 ## Script flags & knobs (cheatsheet)
 
-### `delegate/install_delegate.sh` (env-driven)
+### `modules/delegate/install_delegate.sh` (env-driven)
 - **Required:** `HARNESS_ACCOUNT_ID`, `DELEGATE_TOKEN`, `DELEGATE_NAME`
 - **Optional:**  
   `NS`, `SA`, `REGION`, `CLUSTER_NAME`, `DELEGATE_REPLICAS`,  

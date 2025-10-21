@@ -23,10 +23,10 @@ Designed for Harness SEs *and* customers. The setup is **decoupled**, so you can
 
 ## Contents
 
-- [`backend-bootstrap/`](./backend-bootstrap) – one-time S3 + DynamoDB creation for remote Terraform state
-- [`eks/`](./eks) – EKS cluster (VPC, EKS, node groups, OIDC outputs)
-- [`iam-irsa/`](./iam-irsa) – IAM role & policy for the Harness Delegate via **IRSA**
-- [`delegate/`](./delegate) – scripts to **install** and **uninstall** the Delegate
+- [`modules/backend-bootstrap/`](./backend-bootstrap) – one-time S3 + DynamoDB creation for remote Terraform state
+- [`modules/eks/`](./eks) – EKS cluster (VPC, EKS, node groups, OIDC outputs)
+- [`modules/iam-irsa/`](./iam-irsa) – IAM role & policy for the Harness Delegate via **IRSA**
+- [`modules/delegate/`](./delegate) – scripts to **install** and **uninstall** the Delegate
 - `tf-init.sh` – initializes **remote state** for the root stack
 - `destroy.sh` – decoupled teardown: delegate, permissions, and/or cluster (mac-safe)
 
@@ -47,7 +47,7 @@ Designed for Harness SEs *and* customers. The setup is **decoupled**, so you can
 ## One-time: create the S3 backend
 
 ```bash
-cd backend-bootstrap
+cd modules/backend-bootstrap
 terraform init
 terraform apply -auto-approve \
   -var='bucket_name=<globally-unique-s3-bucket>' \
@@ -108,7 +108,7 @@ terraform apply
 export HARNESS_ACCOUNT_ID="<your-harness-account>"
 export DELEGATE_TOKEN="<a-secure-token>"
 export DELEGATE_NAME="demo-delegate"
-./delegate/install_delegate.sh
+./modules/delegate/install_delegate.sh
 ```
 
 Verify:
@@ -128,7 +128,7 @@ terraform apply \
 export HARNESS_ACCOUNT_ID="<your-harness-account>"
 export DELEGATE_TOKEN="<a-secure-token>"
 export DELEGATE_NAME="demo-delegate"
-./delegate/install_delegate.sh
+./modules/delegate/install_delegate.sh
 ```
 
 ---
