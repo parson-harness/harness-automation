@@ -1,3 +1,4 @@
+# aws/modules/grafana/outputs.tf
 output "service_name" {
   value       = helm_release.grafana.name
   description = "Helm release name"

@@ -1,3 +1,4 @@
+# aws/variables.tf
 # -------------------------------
 # Cluster / Infra toggles
 # -------------------------------
@@ -136,12 +137,6 @@ variable "grafana_admin_pass" {
   type        = string
   default     = ""
   sensitive   = true
-}
-
-variable "grafana_prometheus_url" {
-  description = "Optional internal URL for Prometheus datasource (e.g., http://kube-prometheus-stack-prometheus.monitoring.svc:9090)."
-  type        = string
-  default     = ""
 }
 
 variable "grafana_dashboards" {

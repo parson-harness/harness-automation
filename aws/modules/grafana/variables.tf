@@ -1,3 +1,4 @@
+# aws/modules/grafana/variables.tf
 variable "namespace" {
   type        = string
   default     = "tools"

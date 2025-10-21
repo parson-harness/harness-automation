@@ -63,6 +63,13 @@ resource "kubernetes_storage_class" "default_gp3" {
   depends_on = [data.aws_eks_cluster.this]
 }
 
+module "prometheus" {
+  source    = "./modules/prometheus"
+  namespace = "tools"
+  # release_name = "monitoring" # optional override
+  # chart_version = "65.5.0"    # optional pin
+}
+
 # Optional Grafana (can be applied now or later)
 module "grafana" {
   source = "./modules/grafana"
@@ -79,7 +86,7 @@ module "grafana" {
   admin_user     = var.grafana_admin_user
   admin_password = var.grafana_admin_pass
 
-  prometheus_url = var.grafana_prometheus_url
+  prometheus_url = module.prometheus.prometheus_url
   dashboards     = var.grafana_dashboards
 
   # Static list is fine even if count=0; no ternary needed
