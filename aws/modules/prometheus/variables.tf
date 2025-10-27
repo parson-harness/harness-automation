@@ -17,3 +17,27 @@ variable "chart_version" {
   description = "kube-prometheus-stack chart version (optional)"
   default     = "65.5.0"
 }
+
+variable "prometheus_replicas" {
+  description = "Prometheus replicas (0 pauses Prometheus pods)"
+  type        = number
+  default     = 1
+}
+
+variable "alertmanager_replicas" {
+  description = "Alertmanager replicas (0 pauses Alertmanager pods)"
+  type        = number
+  default     = 1
+}
+
+variable "kube_state_metrics_enabled" {
+  description = "Enable kube-state-metrics deployment"
+  type        = bool
+  default     = true
+}
+
+variable "node_exporter_enabled" {
+  description = "Enable node-exporter DaemonSet"
+  type        = bool
+  default     = true
+}

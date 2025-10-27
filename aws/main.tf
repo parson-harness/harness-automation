@@ -71,8 +71,11 @@ resource "kubernetes_storage_class" "default_gp3" {
 module "prometheus" {
   source    = "./modules/prometheus"
   namespace = "tools"
-  # release_name = "monitoring" # optional override
-  # chart_version = "65.5.0"    # optional pin
+
+  prometheus_replicas        = var.prometheus_replicas
+  alertmanager_replicas      = var.alertmanager_replicas
+  kube_state_metrics_enabled = var.kube_state_metrics_enabled
+  node_exporter_enabled      = var.node_exporter_enabled
 }
 
 # Optional Grafana (can be applied now or later)

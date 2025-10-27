@@ -6,18 +6,38 @@ resource "helm_release" "kube_prometheus_stack" {
   chart      = "kube-prometheus-stack"
   version    = var.chart_version
 
-  # Disable Grafana here – you provision Grafana separately as a TF module
-  set = [
-    {
-      name  = "grafana.enabled"
-      value = "false"
-    }
-  ]
-
-  wait            = true
+  # Important: make Helm not wait when everything is "paused"
+  wait            = (var.prometheus_replicas + var.alertmanager_replicas) > 0
   timeout         = 600
+  atomic          = true
   replace         = true
   cleanup_on_fail = true
+
+  values = [yamlencode({
+    grafana = { enabled = false }
+
+    prometheus = {
+      prometheusSpec = {
+        replicas = var.prometheus_replicas
+        # keep your existing storage config; replicas=0 keeps PVCs but stops pods
+      }
+    }
+
+    alertmanager = {
+      enabled = true
+      alertmanagerSpec = {
+        replicas = var.alertmanager_replicas
+      }
+    }
+
+    kube-state-metrics = {
+      enabled = var.kube_state_metrics_enabled
+    }
+
+    nodeExporter = {
+      enabled = var.node_exporter_enabled
+    }
+  })]
 }
 
 resource "kubernetes_service_v1" "prometheus_incluster" {

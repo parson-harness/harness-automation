@@ -19,13 +19,13 @@ variable "instance_type" {
 
 variable "min_size" {
   description = "Minimum instance size for EKS managed node groups"
-  type        = integer
+  type        = string
   default     = "1"
 }
 
 variable "desired_size" {
   description = "Desired instance size for EKS managed node groups"
-  type        = integer
+  type        = string
   default     = "2"
 }
 

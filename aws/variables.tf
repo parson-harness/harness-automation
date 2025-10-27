@@ -161,3 +161,26 @@ variable "prometheus_url" {
   default     = ""
   description = "Optional Prometheus datasource URL for Grafana"
 }
+variable "prometheus_replicas" {
+  type        = number
+  description = "Prometheus replicas (0 pauses Prometheus pods)"
+  default     = 1
+}
+
+variable "alertmanager_replicas" {
+  type        = number
+  description = "Alertmanager replicas (0 pauses Alertmanager pods)"
+  default     = 1
+}
+
+variable "kube_state_metrics_enabled" {
+  type        = bool
+  description = "Enable kube-state-metrics deployment"
+  default     = true
+}
+
+variable "node_exporter_enabled" {
+  type        = bool
+  description = "Enable node-exporter DaemonSet"
+  default     = true
+}

@@ -9,6 +9,9 @@ resource "kubernetes_namespace" "ns" {
 locals {
   values = {
     service = { type = var.service_type }
+    deploymentStrategy = {
+      type = "Recreate"
+    }
 
     persistence = merge(
       {
@@ -66,13 +69,16 @@ locals {
 }
 
 resource "helm_release" "grafana" {
-  count      = var.grafana_enabled ? 1 : 0
-  name       = var.release_name
-  namespace  = var.namespace
-  repository = "https://grafana.github.io/helm-charts"
-  chart      = "grafana"
-  version    = "10.1.2"
-  timeout    = var.timeout_seconds
+  count           = var.grafana_enabled ? 1 : 0
+  name            = var.release_name
+  namespace       = var.namespace
+  repository      = "https://grafana.github.io/helm-charts"
+  chart           = "grafana"
+  version         = "10.1.2"
+  wait            = var.replica_count > 0
+  timeout         = var.timeout_seconds
+  atomic          = true
+  cleanup_on_fail = true
 
   values = [
     yamlencode(
