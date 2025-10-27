@@ -17,6 +17,18 @@ variable "instance_type" {
   default     = "t3.large"
 }
 
+variable "min_size" {
+  description = "Minimum instance size for EKS managed node groups"
+  type        = integer
+  default     = "1"
+}
+
+variable "desired_size" {
+  description = "Desired instance size for EKS managed node groups"
+  type        = integer
+  default     = "2"
+}
+
 variable "delegate_namespace" {
   description = "K8s namespace for the Harness Delegate"
   type        = string

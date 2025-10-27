@@ -13,7 +13,7 @@ terraform {
     }
     helm = {
       source  = "hashicorp/helm"
-      version = ">= 2.10.1, < 4.0.0"   # allows 3.x (incl. 3.0.2)
+      version = ">= 2.10.1, < 4.0.0" # allows 3.x (incl. 3.0.2)
     }
     external = {
       source  = "hashicorp/external"

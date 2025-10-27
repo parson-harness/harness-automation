@@ -113,12 +113,18 @@ variable "grafana_release" {
   type        = string
   default     = "grafana"
 }
+variable "replica_count" {
+  description = "Number of Grafana replicas (0 = stop pods)"
+  type        = number
+  default     = 1
+}
 
 variable "grafana_service_type" {
-  description = "Kubernetes Service type for Grafana."
+  description = "Kubernetes Service type for Grafana (LoadBalancer or ClusterIP)"
   type        = string
   default     = "LoadBalancer"
 }
+
 
 variable "grafana_storage_size" {
   description = "PersistentVolume size for Grafana (passed to module as persistence_size)."
@@ -147,4 +153,11 @@ variable "grafana_dashboards" {
     datasource = string
   }))
   default = []
+}
+
+# aws/variables.tf
+variable "prometheus_url" {
+  type        = string
+  default     = ""
+  description = "Optional Prometheus datasource URL for Grafana"
 }

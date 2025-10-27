@@ -18,6 +18,11 @@ module "eks" {
 # Resolve target cluster name for both paths
 locals {
   target_cluster_name = var.create_eks ? module.eks[0].cluster_name : var.existing_cluster_name
+  # If a root-level override is provided (e.g., in terraform.tfvars), use it.
+  # Otherwise fall back to the Prometheus module’s output.
+  prometheus_url_effective = (
+    var.prometheus_url != "" ? var.prometheus_url : module.prometheus.prometheus_url
+  )
 }
 
 # IRSA for the delegate
@@ -52,9 +57,9 @@ resource "kubernetes_storage_class" "default_gp3" {
     }
   }
 
-  storage_provisioner     = "ebs.csi.aws.com"
-  allow_volume_expansion  = true
-  volume_binding_mode     = "WaitForFirstConsumer"
+  storage_provisioner    = "ebs.csi.aws.com"
+  allow_volume_expansion = true
+  volume_binding_mode    = "WaitForFirstConsumer"
   parameters = {
     type = var.storage_class_volume_type
   }
@@ -75,18 +80,18 @@ module "grafana" {
   source = "./modules/grafana"
   count  = var.create_grafana ? 1 : 0
 
-  namespace      = var.grafana_namespace
-  release_name   = var.grafana_release
-  service_type   = var.grafana_service_type
+  namespace    = var.grafana_namespace
+  release_name = var.grafana_release
+  service_type = var.grafana_service_type
 
   # match module var names
-  persistence_size    = var.grafana_storage_size
+  persistence_size = var.grafana_storage_size
   # leave persistence_enabled default (true) inside the module, or add a var here if you want
 
   admin_user     = var.grafana_admin_user
   admin_password = var.grafana_admin_pass
 
-  prometheus_url = module.prometheus.prometheus_url
+  prometheus_url = local.prometheus_url_effective
   dashboards     = var.grafana_dashboards
 
   # Static list is fine even if count=0; no ternary needed

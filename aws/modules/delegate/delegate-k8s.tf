@@ -47,3 +47,7 @@ resource "kubernetes_cluster_role_binding_v1" "delegate_admin" {
 
   depends_on = [kubernetes_service_account_v1.delegate]
 }
+
+output "region" {
+  value = var.region
+}

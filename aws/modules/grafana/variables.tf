@@ -11,10 +11,30 @@ variable "release_name" {
   description = "Helm release name"
 }
 
+variable "grafana_enabled" {
+  description = "Whether to deploy Grafana"
+  type        = bool
+  default     = true
+}
+
+variable "replica_count" {
+  type        = number
+  default     = 1
+  description = "Number of Grafana replicas (0 = stop pods)"
+  validation {
+    condition     = var.replica_count >= 0 && floor(var.replica_count) == var.replica_count
+    error_message = "replica_count must be a non-negative integer."
+  }
+}
+
 variable "service_type" {
   type        = string
   default     = "LoadBalancer"
   description = "Service type for Grafana"
+  validation {
+    condition     = contains(["ClusterIP", "NodePort", "LoadBalancer"], var.service_type)
+    error_message = "service_type must be ClusterIP, NodePort, or LoadBalancer."
+  }
 }
 
 variable "persistence_enabled" {

@@ -127,9 +127,9 @@ module "eks" {
 
       tags           = { Owner = var.tag_owner }
       instance_types = [var.instance_type]
-      min_size       = 1
+      min_size       = var.min_size
       max_size       = 2
-      desired_size   = 1
+      desired_size   = var.desired_size
 
       # Keep nodes minimal; module attaches required AWS-managed policies already
       iam_role_additional_policies = {
@@ -145,9 +145,9 @@ module "eks" {
 
       tags           = { Owner = var.tag_owner }
       instance_types = [var.instance_type]
-      min_size       = 1
+      min_size       = var.min_size
       max_size       = 2
-      desired_size   = 1
+      desired_size   = var.desired_size
 
       iam_role_additional_policies = {
         custom = aws_iam_policy.custom_node_policy_describe_regions.arn

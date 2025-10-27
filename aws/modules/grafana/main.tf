@@ -1,3 +1,4 @@
+# aws/modules/grafana/main.tf
 resource "kubernetes_namespace" "ns" {
   metadata {
     name = var.namespace
@@ -22,7 +23,7 @@ locals {
 
     datasources = var.prometheus_url != "" ? {
       "datasources.yaml" = {
-        apiVersion  = 1
+        apiVersion = 1
         datasources = [{
           name      = "Prometheus"
           type      = "prometheus"
@@ -34,9 +35,22 @@ locals {
       }
     } : {}
 
-    dashboardsProvider = {
-      enabled = length(var.dashboards) > 0
-    }
+    dashboardProviders = length(var.dashboards) > 0 ? {
+      "dashboardproviders.yaml" = {
+        apiVersion = 1
+        providers = [{
+          name            = "default"
+          orgId           = 1
+          folder          = ""
+          type            = "file"
+          disableDeletion = false
+          editable        = true
+          options = {
+            path = "/var/lib/grafana/dashboards/default"
+          }
+        }]
+      }
+    } : {}
 
     dashboards = length(var.dashboards) > 0 ? {
       "default" = {
@@ -52,13 +66,22 @@ locals {
 }
 
 resource "helm_release" "grafana" {
+  count      = var.grafana_enabled ? 1 : 0
   name       = var.release_name
   namespace  = var.namespace
   repository = "https://grafana.github.io/helm-charts"
   chart      = "grafana"
   version    = "10.1.2"
   timeout    = var.timeout_seconds
-  values     = [yamlencode(local.values)]
+
+  values = [
+    yamlencode(
+      merge(local.values, {
+        replicas = var.replica_count
+      })
+    )
+  ]
 
   depends_on = [kubernetes_namespace.ns]
 }
+

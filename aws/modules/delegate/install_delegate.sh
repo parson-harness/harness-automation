@@ -1,23 +1,51 @@
 #!/usr/bin/env bash
-# Harness Delegate installer (Helm) — robust quoting + latest image resolution
+# Harness Delegate installer (Helm) — hardened for TF/ANSI/CRLF and safe YAML
 set -euo pipefail
+
+# Make Terraform output automation-friendly (no ANSI)
+export TF_IN_AUTOMATION=1
+export TF_CLI_ARGS="-no-color"
 
 say()  { printf "\n==> %s\n" "$*"; }
 warn() { printf "\nWARN: %s\n" "$*" >&2; }
 err()  { printf "\nERROR: %s\n" "$*" >&2; exit 1; }
 
+# Remove CR/LF/TAB and any remaining C0 control chars from single-line values
+scrub() { printf %s "$1" | LC_ALL=C tr -d '\r\n\t' | sed -E $'s/[\x00-\x1F]//g'; }
+# Single-quote YAML scalar safely (after scrubbing)
+yamlq() { local s; s="$(scrub "$1")"; s=${s//\'/\'\'}; printf "'%s'" "$s"; }
+
 sanitize_release() {
   echo "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-+//; s/-+$//' | cut -c1-53
 }
 is_valid_region() { [[ "$1" =~ ^[a-z]{2}(-[a-z]+)+-[0-9]+$ ]]; }
-prompt() { local v="$1"; shift; [ -n "${!v:-}" ] || { read -rp "$*: " _; export "$v"="$_"; }; }
-yamlq() { local s=${1//\'/\'\'}; printf "'%s'" "$s"; }
+is_iam_role_arn() { [[ "$1" =~ ^arn:aws(-[a-z0-9]+)?:iam::[0-9]{12}:role/.+ ]]; }
+
+prompt() {
+  local v="$1"; shift
+  if [ -z "${!v:-}" ]; then
+    local ans
+    read -rp "$*: " ans
+    printf -v "$v" "%s" "$(scrub "$ans")"
+    export "$v"
+  fi
+}
 
 # Read a Terraform output from root (aws/) safely
 tf_output_root() {
-  local key="$1" val=""
-  if val="$("$TERRAFORM_BIN" -chdir="$ROOT_DIR" output -raw "$key" 2>/dev/null || true)"; then :; fi
-  [[ -z "$val" || "$val" == *"Warning: No outputs found"* ]] && echo "" || echo "$val"
+  local key="$1" raw val
+  raw="$("$TERRAFORM_BIN" -chdir="$ROOT_DIR" output -raw "$key" 2>/dev/null || true)"
+  # Strip ANSI + control chars
+  val="$(printf %s "$raw" \
+        | sed -E $'s/\x1B\\[[0-9;]*[A-Za-z]//g' \
+        | LC_ALL=C tr -d '\r' \
+        | sed -E $'s/[\x00-\x1F]//g')"
+  # Treat known warnings as empty
+  if printf %s "$val" | grep -qi 'warning: no outputs found'; then
+    echo ""
+  else
+    echo "$val"
+  fi
 }
 
 # ---- ONLY echo the image to stdout; send logs to stderr ----
@@ -30,8 +58,13 @@ resolve_latest_delegate_image() {
   if command -v jq >/dev/null 2>&1; then
     tag="$(curl -fsSL "$hub" | jq -r '.results[].name' | grep -E '^[0-9]{2}\.[0-9]{2}\.[0-9]{5}$' | sort -V | tail -n1 || true)"
   else
-    tag="$(curl -fsSL "$hub" | tr ',' '\n' | grep -oE '"name":[[:space:]]*"[^"]+"' \
-          | sed -E 's/.*"name":[[:space:]]*"([^"]+)".*/\1/' | grep -E '^[0-9]{2}\.[0-9]{2}\.[0-9]{5}$' | sort -V | tail -n1 || true)"
+    tag="$(
+      curl -fsSL "$hub" \
+      | tr ',' '\n' | grep -oE '"name":[[:space:]]*"[^"]+"' \
+      | sed -E 's/.*"name":[[:space:]]*"([^"]+)".*/\1/' \
+      | grep -E '^[0-9]{2}\.[0-9]{2}\.[0-9]{5}$' \
+      | sort -V | tail -n1 || true
+    )"
   fi
   local prefix="${DELEGATE_IMAGE_PREFIX:-us-docker.pkg.dev/gar-prod-setup/harness-public/harness/delegate}"
   if [ -n "$tag" ]; then echo "${prefix}:${tag}"; return 0; fi
@@ -75,6 +108,21 @@ prompt DELEGATE_TOKEN      "Harness Delegate Token"
 prompt DELEGATE_NAME       "Delegate name (unique per namespace)"
 is_valid_region "$REGION" || err "REGION '$REGION' doesn't look like an AWS region (e.g., us-east-1)."
 
+# Final scrub on env-derived values (protect YAML)
+HARNESS_ACCOUNT_ID="$(scrub "${HARNESS_ACCOUNT_ID}")"
+DELEGATE_TOKEN="$(scrub "${DELEGATE_TOKEN}")"
+DELEGATE_NAME="$(scrub "${DELEGATE_NAME}")"
+NS="$(scrub "${NS}")"
+SA="$(scrub "${SA}")"
+MANAGER_ENDPOINT="$(scrub "${MANAGER_ENDPOINT}")"
+IRSA_ROLE_ARN="$(scrub "${IRSA_ROLE_ARN}")"
+
+# Validate IRSA; if junk (e.g., TF warning), drop it gracefully
+if [ -n "${IRSA_ROLE_ARN}" ] && ! is_iam_role_arn "${IRSA_ROLE_ARN}"; then
+  warn "Ignoring invalid IRSA_ROLE_ARN (does not look like an IAM role ARN)."
+  IRSA_ROLE_ARN=""
+fi
+
 RELEASE_NAME="${RELEASE_NAME:-$(sanitize_release "$DELEGATE_NAME")}"
 [ -n "$RELEASE_NAME" ] || err "Release name derived from DELEGATE_NAME is empty."
 
@@ -112,7 +160,7 @@ TMP="$(mktemp -t delegate-values.XXXX.yaml)"; trap 'rm -f "$TMP"' EXIT
   echo "replicas: ${DELEGATE_REPLICAS}"
   [ -n "$IRSA_ROLE_ARN" ] && echo "irsaRoleArn: $(yamlq "$IRSA_ROLE_ARN")"
   [ -n "$IMG" ] && echo "delegateDockerImage: $(yamlq "$IMG")"
-} > "$TMP"
+} | LC_ALL=C tr -d '\r' > "$TMP"
 
 # ---- install/upgrade ----
 say "Installing delegate '${DELEGATE_NAME}' as Helm release '${RELEASE_NAME}' in ns '${NS}'"
