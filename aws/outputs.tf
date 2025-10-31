@@ -35,3 +35,58 @@ output "grafana_svc_hint" {
   value       = var.create_grafana ? module.grafana[0].svc_hint : null
   description = "Command to get the Grafana Service (EXTERNAL-IP)"
 }
+
+output "prometheus_namespace" {
+  description = "Namespace where Prometheus stack is deployed."
+  value       = try(module.prometheus.namespace, null)
+}
+
+output "prometheus_release_name" {
+  description = "Helm release name for the Prometheus stack."
+  value       = try(module.prometheus.release_name, null)
+}
+
+output "prometheus_svc_hint" {
+  description = "Command to list Prometheus services."
+  value       = "kubectl get svc -n ${var.grafana_namespace} -l app.kubernetes.io/name=prometheus -o wide"
+}
+
+output "prometheus_url" {
+  description = "Internal or external URL for Prometheus (if exposed)."
+  value       = try(module.prometheus.prometheus_url, null)
+}
+
+output "prometheus_alertmanager_url" {
+  description = "Internal or external URL for Alertmanager (if exposed)."
+  value       = try(module.prometheus.alertmanager_url, null)
+}
+
+output "prometheus_lb_hostname" {
+  description = "LoadBalancer hostname for Prometheus."
+  value       = try(module.prometheus.load_balancer_hostname, null)
+}
+
+output "prometheus_lb_ip" {
+  description = "LoadBalancer IP for Prometheus."
+  value       = try(module.prometheus.load_balancer_ip, null)
+}
+
+output "sonarqube_namespace" {
+  description = "Namespace where SonarQube is deployed."
+  value       = try(module.sonarqube.namespace, null)
+}
+
+output "sonarqube_lb_hostname" {
+  description = "External LB hostname for SonarQube (if available)."
+  value       = try(module.sonarqube.load_balancer_hostname, null)
+}
+
+output "sonarqube_lb_ip" {
+  description = "External LB IP for SonarQube (if available)."
+  value       = try(module.sonarqube.load_balancer_ip, null)
+}
+
+output "sonarqube_svc_hint" {
+  description = "Command to list the SonarQube service."
+  value       = "kubectl get svc -n ${var.grafana_namespace} -l app.kubernetes.io/name=sonarqube -o wide"
+}

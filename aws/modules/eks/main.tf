@@ -128,7 +128,7 @@ module "eks" {
       tags           = { Owner = var.tag_owner }
       instance_types = [var.instance_type]
       min_size       = var.min_size
-      max_size       = 2
+      max_size       = var.max_size
       desired_size   = var.desired_size
 
       # Keep nodes minimal; module attaches required AWS-managed policies already

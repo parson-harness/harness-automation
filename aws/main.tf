@@ -70,7 +70,7 @@ resource "kubernetes_storage_class" "default_gp3" {
 
 module "prometheus" {
   source    = "./modules/prometheus"
-  namespace = "tools"
+  namespace = var.grafana_namespace
 
   prometheus_replicas        = var.prometheus_replicas
   alertmanager_replicas      = var.alertmanager_replicas
@@ -99,4 +99,40 @@ module "grafana" {
 
   # Static list is fine even if count=0; no ternary needed
   depends_on = [kubernetes_storage_class.default_gp3]
+}
+
+# Optional SonarQube (can be applied now or later)
+module "sonarqube" {
+  source = "./modules/sonarqube"
+
+  # --- Flip this to true to install, false to skip/destroy
+  enabled = true
+
+  namespace        = var.grafana_namespace
+  create_namespace = false
+  release_name     = "sonarqube"
+  chart_name       = "sonarqube"
+  chart_repo       = "https://SonarSource.github.io/helm-chart-sonarqube"
+  chart_version    = null # <-- pin a version you’ve validated
+
+  service_type       = "LoadBalancer"
+  storage_class_name = "gp3"
+  persistence_size   = "20Gi"
+
+  annotations = {
+    "service.beta.kubernetes.io/aws-load-balancer-type" = "nlb"
+  }
+
+  extra_values = <<-YAML
+  sonarProperties:
+    sonar.forceAuthentication: "true"
+
+  monitoringPasscode: "${var.sonarqube_monitoring_passcode}"
+
+  community:
+    enabled: true
+  
+  ingress:
+    enabled: false
+  YAML
 }

@@ -1,0 +1,32 @@
+# --- Service
+service:
+  type: ${service_type}
+  annotations:
+%{ for k, v in annotations ~}
+    ${k}: "${v}"
+%{ endfor ~}
+
+# --- Persistence
+persistence:
+  enabled: true
+  storageClass: ${storage_class_name}
+  size: ${persistence_size}
+
+# --- Resources
+resources:
+  requests:
+    cpu: ${resources.requests.cpu}
+    memory: ${resources.requests.memory}
+  limits:
+    cpu: ${resources.limits.cpu}
+    memory: ${resources.limits.memory}
+
+# --- Scheduling
+nodeSelector:
+%{ for k, v in node_selector ~}
+  ${k}: "${v}"
+%{ endfor ~}
+tolerations:
+%{ for t in tolerations ~}
+  - ${jsonencode(t)}
+%{ endfor ~}

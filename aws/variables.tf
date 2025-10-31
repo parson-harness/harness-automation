@@ -184,3 +184,15 @@ variable "node_exporter_enabled" {
   description = "Enable node-exporter DaemonSet"
   default     = true
 }
+
+variable "create_sonarqube" {
+  description = "Install SonarQube via Helm."
+  type        = bool
+  default     = false
+}
+variable "sonarqube_monitoring_passcode" {
+  type        = string
+  description = "Passcode for SonarQube monitoring endpoint."
+  sensitive   = true
+  default     = "HarnessFTW!"
+}

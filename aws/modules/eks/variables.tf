@@ -19,14 +19,20 @@ variable "instance_type" {
 
 variable "min_size" {
   description = "Minimum instance size for EKS managed node groups"
-  type        = string
-  default     = "1"
+  type        = number
+  default     = 0
 }
 
 variable "desired_size" {
   description = "Desired instance size for EKS managed node groups"
-  type        = string
-  default     = "2"
+  type        = number
+  default     = 2
+}
+
+variable "max_size" {
+  description = "Max instance size for EKS managed node groups"
+  type        = number
+  default     = 2
 }
 
 variable "delegate_namespace" {
