@@ -194,5 +194,5 @@ variable "sonarqube_monitoring_passcode" {
   type        = string
   description = "Passcode for SonarQube monitoring endpoint."
   sensitive   = true
-  default     = "HarnessFTW!"
+  default     = "HarnessFTW!1"
 }
