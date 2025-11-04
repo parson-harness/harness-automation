@@ -24,6 +24,16 @@ variable "region" {
   default     = "us-east-1"
 }
 
+variable "warm_az" {
+  type    = string
+  default = null
+} # e.g. "us-east-1a"
+
+variable "warm_desired" {
+  type    = number
+  default = 0
+} # e.g. 1
+
 variable "cluster" {
   description = "Base name for the EKS cluster (will be suffixed with tag_owner inside the EKS module)."
   type        = string
@@ -40,6 +50,24 @@ variable "instance_type" {
   description = "Instance type for EKS managed node groups."
   type        = string
   default     = "t3.large"
+}
+
+variable "min_size" {
+  description = "Minimum size of cluster node group."
+  type        = number
+  default     = 0
+}
+
+variable "desired_size" {
+  description = "Desired size of cluster node group."
+  type        = number
+  default     = 2
+}
+
+variable "max_size" {
+  description = "Maximum size of cluster node group."
+  type        = number
+  default     = 3
 }
 
 variable "delegate_namespace" {

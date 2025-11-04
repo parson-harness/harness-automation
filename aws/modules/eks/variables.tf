@@ -64,3 +64,13 @@ variable "assume_role_arns" {
   type        = list(string)
   default     = []
 }
+
+variable "warm_az" {
+  type    = string
+  default = null
+} # e.g. "us-east-1a"
+
+variable "warm_desired" {
+  type    = number
+  default = 0
+} # e.g. 1

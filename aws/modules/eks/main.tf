@@ -15,6 +15,17 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 data "aws_partition" "current" {}
 
+####################################
+# Per-AZ locals for node groups
+####################################
+locals {
+  eks_azs         = module.vpc.azs
+  eks_public_subs = module.vpc.public_subnets
+
+  # If you want one warm node, set these in tfvars (example: "us-east-1a", 1)
+  warm_az      = try(var.warm_az, null)
+  warm_desired = try(var.warm_desired, 0)
+}
 locals {
   cluster_name = "${var.cluster}-${var.tag_owner}"
 
@@ -93,7 +104,7 @@ module "vpc" {
 }
 
 ####################################
-# EKS cluster (use public subnets for the cluster + nodes)
+# EKS cluster (public subnets)
 ####################################
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
@@ -103,13 +114,11 @@ module "eks" {
   cluster_version = "1.32"
 
   enable_irsa = true
-
-  tags = { Owner = var.tag_owner }
+  tags        = { Owner = var.tag_owner }
 
   cluster_endpoint_public_access           = true
   enable_cluster_creator_admin_permissions = true
 
-  # Use the public subnets so nodes and control-plane ENIs share reachability assumptions for this POV
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.public_subnets
 
@@ -117,51 +126,36 @@ module "eks" {
     ami_type = "AL2023_x86_64_STANDARD"
   }
 
-  cluster_timeouts = { delete = "60m" }
+  # One node group per AZ, pinned to a single subnet in that AZ
   eks_managed_node_groups = {
-    one = {
-      name            = "node-group-1"
-      use_name_prefix = false
-      subnet_ids      = module.vpc.public_subnets
-      timeouts        = { delete = "60m" }
-
-      tags           = { Owner = var.tag_owner }
-      instance_types = [var.instance_type]
-      min_size       = var.min_size
-      max_size       = var.max_size
-      desired_size   = var.desired_size
-
-      # Keep nodes minimal; module attaches required AWS-managed policies already
+    for idx, az in local.eks_azs :
+    "ng-${az}" => {
+      name            = "ng-${az}"
+      use_name_prefix = true
+      subnet_ids      = [element(local.eks_public_subs, idx)]
+      instance_types  = [var.instance_type]
+      min_size        = 0
+      max_size        = 3
+      # Keep one warm node only in the selected warm_az
+      desired_size = (local.warm_az == az ? local.warm_desired : 0)
+      timeouts     = { delete = "60m" }
       iam_role_additional_policies = {
         custom = aws_iam_policy.custom_node_policy_describe_regions.arn
       }
-    }
-
-    two = {
-      name            = "node-group-2"
-      use_name_prefix = false
-      subnet_ids      = module.vpc.public_subnets
-      timeouts        = { delete = "60m" }
-
-      tags           = { Owner = var.tag_owner }
-      instance_types = [var.instance_type]
-      min_size       = var.min_size
-      max_size       = 2
-      desired_size   = var.desired_size
-
-      iam_role_additional_policies = {
-        custom = aws_iam_policy.custom_node_policy_describe_regions.arn
-      }
+      tags = { Owner = var.tag_owner }
     }
   }
 
-  # EBS CSI (IRSA below)
+  cluster_timeouts = { delete = "60m" }
+
+  # EBS CSI (with IRSA)
   cluster_addons = {
     aws-ebs-csi-driver = {
       service_account_role_arn = module.irsa-ebs-csi.iam_role_arn
     }
   }
 }
+
 
 ####################################
 # EBS CSI IRSA
