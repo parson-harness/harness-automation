@@ -1,0 +1,9 @@
+grafana.ini:
+  security:
+    allow_embedding: true     # allow dashboards in iframes (Backstage/IDP)
+    samesite: none
+
+# (optional but often helpful behind an ingress/load balancer)
+# server:
+#   root_url: https://<your-grafana-hostname>
+#   serve_from_sub_path: false
