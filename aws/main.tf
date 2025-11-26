@@ -79,6 +79,34 @@ module "prometheus" {
 }
 
 # Optional Grafana (can be applied now or later)
+# Only attempt DNS if we don't already have an IP
+# Resolve NLB A record only if we have a hostname and no IP yet
+data "dns_a_record_set" "ingress_nlb" {
+  count = (
+    try(module.ingress_nginx.lb_ip, "") == "" &&
+    try(module.ingress_nginx.lb_hostname, "") != ""
+  ) ? 1 : 0
+  host = module.ingress_nginx.lb_hostname
+}
+
+locals {
+  # First: use the direct IP if the module exposed one
+  # Else: if the DNS lookup ran AND returned an address, use that
+  # Else: null (still provisioning)
+  ingress_ip = (
+    try(module.ingress_nginx.lb_ip, "") != "" ? module.ingress_nginx.lb_ip :
+    (length(data.dns_a_record_set.ingress_nlb) > 0 &&
+      length(data.dns_a_record_set.ingress_nlb[0].addrs) > 0
+      ? data.dns_a_record_set.ingress_nlb[0].addrs[0]
+    : null)
+  )
+
+  grafana_host_effective = (
+    var.grafana_host != "" ? var.grafana_host :
+    (local.ingress_ip != null ? "${local.ingress_ip}.sslip.io" : null)
+  )
+}
+
 module "grafana" {
   source = "./modules/grafana"
   count  = var.create_grafana ? 1 : 0
@@ -86,6 +114,10 @@ module "grafana" {
   namespace    = var.grafana_namespace
   release_name = var.grafana_release
   service_type = var.grafana_service_type
+
+  host                = local.grafana_host_effective != null ? local.grafana_host_effective : ""
+  use_alb             = false
+  cluster_issuer_name = "letsencrypt-prod"
 
   # match module var names
   persistence_size = var.grafana_storage_size
@@ -99,6 +131,19 @@ module "grafana" {
 
   # Static list is fine even if count=0; no ternary needed
   depends_on = [kubernetes_storage_class.default_gp3]
+}
+
+module "ingress_nginx" {
+  source = "./modules/ingress-nginx"
+  # chart_version = "4.11.1"
+  # lb_type       = "nlb"
+  # lb_scheme     = "internet-facing"
+}
+
+module "cert_manager" {
+  source        = "./modules/cert-manager"
+  acme_email    = var.acme_email # add this var to your root variables.tf/tfvars
+  ingress_class = "nginx"
 }
 
 # Optional SonarQube (can be applied now or later)

@@ -31,9 +31,28 @@ output "grafana_admin_password_cmd" {
   description = "Command to print Grafana admin password (if auto-generated)"
 }
 
+output "grafana_url" {
+  value       = var.create_grafana ? module.grafana[0].url : null
+  description = "Grafana URL"
+}
+
 output "grafana_svc_hint" {
   value       = var.create_grafana ? module.grafana[0].svc_hint : null
   description = "Command to get the Grafana Service (EXTERNAL-IP)"
+}
+
+output "suggested_grafana_host" {
+  value = local.grafana_host_effective
+}
+
+output "grafana_effective_host" {
+  description = "Final hostname used for Grafana (explicit or sslip.io), if any."
+  value       = try(local.grafana_host_effective, null)
+}
+
+output "grafana_effective_url" {
+  description = "Final HTTPS URL to Grafana if a host was resolved."
+  value       = local.grafana_host_effective != null ? format("https://%s", local.grafana_host_effective) : null
 }
 
 output "prometheus_namespace" {

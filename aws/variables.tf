@@ -183,6 +183,19 @@ variable "grafana_dashboards" {
   default = []
 }
 
+variable "grafana_host" {
+  type = string
+} # e.g., grafana.example.com
+variable "grafana_use_alb" {
+  type    = bool
+  default = true
+} # ALB path
+
+variable "cluster_issuer_name" {
+  type    = string
+  default = "letsencrypt-prod"
+}
+
 # aws/variables.tf
 variable "prometheus_url" {
   type        = string
@@ -223,4 +236,9 @@ variable "sonarqube_monitoring_passcode" {
   description = "Passcode for SonarQube monitoring endpoint."
   sensitive   = true
   default     = "HarnessFTW!1"
+}
+
+variable "acme_email" {
+  type        = string
+  description = "Email used for Let's Encrypt notifications"
 }

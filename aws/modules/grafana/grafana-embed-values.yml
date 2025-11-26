@@ -2,6 +2,9 @@ grafana.ini:
   security:
     allow_embedding: true     # allow dashboards in iframes (Backstage/IDP)
     samesite: none
+  cookies:
+#    samesite: none            # allow cookies in cross-site iframe use
+    secure: true              # required for SameSite=None (needs HTTPS)
 
 # (optional but often helpful behind an ingress/load balancer)
 # server:

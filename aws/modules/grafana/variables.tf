@@ -88,3 +88,18 @@ variable "timeout_seconds" {
   default     = 1200
   description = "Timeout for Helm release (seconds)"
 }
+variable "host" {
+  type        = string
+  description = "FQDN for Grafana Ingress (optional)."
+  default     = ""
+  nullable    = false
+}
+variable "use_alb" {
+  type    = bool
+  default = false
+}
+
+variable "cluster_issuer_name" {
+  type    = string
+  default = "letsencrypt-prod"
+}
