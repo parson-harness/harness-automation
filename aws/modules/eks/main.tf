@@ -69,7 +69,8 @@ resource "aws_iam_policy" "custom_node_policy_describe_regions" {
         Action = [
           "ec2:CreateLaunchTemplate",
           "ec2:CreateLaunchTemplateVersion",
-          "ec2:RunInstances"
+          "ec2:RunInstances",
+          "ec2:CreateTags"
         ]
         Resource = "*"
       },

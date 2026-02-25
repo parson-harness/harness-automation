@@ -66,6 +66,8 @@ variable "inline_policy_json" {
         "ec2:DeleteLaunchTemplate",
         "ec2:DescribeLaunchTemplates",
         "ec2:DescribeLaunchTemplateVersions",
+        "ec2:RunInstances",
+        "ec2:CreateTags",
         "autoscaling:*",
         "elasticloadbalancing:*",
         "iam:PassRole",
