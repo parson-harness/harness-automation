@@ -50,7 +50,29 @@ variable "inline_policy_json" {
   "Statement": [
     { "Effect": "Allow", "Action": ["logs:CreateLogGroup","logs:CreateLogStream","logs:PutLogEvents"], "Resource": "*" },
     { "Effect": "Allow", "Action": ["ecr:GetAuthorizationToken","ecr:BatchCheckLayerAvailability","ecr:GetDownloadUrlForLayer","ecr:BatchGetImage"], "Resource": "*" },
-    { "Effect": "Allow", "Action": ["sts:AssumeRole"], "Resource": "*" }
+    { "Effect": "Allow", "Action": ["sts:AssumeRole"], "Resource": "*" },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeImages",
+        "ec2:DescribeInstances",
+        "ec2:DescribeTags",
+        "ec2:DescribeRegions",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeVpcs",
+        "ec2:CreateLaunchTemplate",
+        "ec2:CreateLaunchTemplateVersion",
+        "ec2:DeleteLaunchTemplate",
+        "ec2:DescribeLaunchTemplates",
+        "ec2:DescribeLaunchTemplateVersions",
+        "autoscaling:*",
+        "elasticloadbalancing:*",
+        "iam:PassRole",
+        "iam:GetRole"
+      ],
+      "Resource": "*"
+    }
   ]
 }
 EOF

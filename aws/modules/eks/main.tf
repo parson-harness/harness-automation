@@ -47,16 +47,78 @@ locals {
 resource "aws_iam_policy" "custom_node_policy_describe_regions" {
   name_prefix = local.policy_pref
 
-  description = "Allow EKS worker nodes to ec2:DescribeRegions (scoped to ${local.cluster_name})"
+  description = "Allow EKS worker nodes EC2 and ASG permissions for Harness deployments (scoped to ${local.cluster_name})"
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Sid      = "AllowDescribeRegions"
-      Effect   = "Allow"
-      Action   = "ec2:DescribeRegions"
-      Resource = "*"
-    }]
+    Statement = [
+      {
+        Sid    = "AllowEC2Describe"
+        Effect = "Allow"
+        Action = [
+          "ec2:DescribeRegions",
+          "ec2:DescribeImages",
+          "ec2:DescribeLaunchTemplates",
+          "ec2:DescribeLaunchTemplateVersions"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowEC2LaunchTemplates"
+        Effect = "Allow"
+        Action = [
+          "ec2:CreateLaunchTemplate",
+          "ec2:CreateLaunchTemplateVersion",
+          "ec2:RunInstances"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowAutoScaling"
+        Effect = "Allow"
+        Action = [
+          "autoscaling:AttachLoadBalancers",
+          "autoscaling:AttachLoadBalancerTargetGroups",
+          "autoscaling:CreateAutoScalingGroup",
+          "autoscaling:CreateOrUpdateTags",
+          "autoscaling:DeleteAutoScalingGroup",
+          "autoscaling:DeleteLifecycleHook",
+          "autoscaling:DeletePolicy",
+          "autoscaling:DeleteScheduledAction",
+          "autoscaling:DeleteTags",
+          "autoscaling:DescribeAutoScalingGroups",
+          "autoscaling:DescribeInstanceRefreshes",
+          "autoscaling:DescribeLifecycleHooks",
+          "autoscaling:DescribeLoadBalancers",
+          "autoscaling:DescribeLoadBalancerTargetGroups",
+          "autoscaling:DescribePolicies",
+          "autoscaling:DescribeScheduledActions",
+          "autoscaling:DescribeTags",
+          "autoscaling:DetachLoadBalancers",
+          "autoscaling:DetachLoadBalancerTargetGroups",
+          "autoscaling:PutLifecycleHook",
+          "autoscaling:PutScalingPolicy",
+          "autoscaling:PutScheduledUpdateGroupAction",
+          "autoscaling:SetDesiredCapacity",
+          "autoscaling:StartInstanceRefresh",
+          "autoscaling:UpdateAutoScalingGroup"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowELB"
+        Effect = "Allow"
+        Action = [
+          "elasticloadbalancing:DescribeListeners",
+          "elasticloadbalancing:DescribeLoadBalancers",
+          "elasticloadbalancing:DescribeRules",
+          "elasticloadbalancing:DescribeTargetHealth",
+          "elasticloadbalancing:ModifyListener",
+          "elasticloadbalancing:ModifyRule"
+        ]
+        Resource = "*"
+      }
+    ]
   })
 
   tags = {
@@ -134,8 +196,8 @@ module "eks" {
       use_name_prefix = true
       subnet_ids      = [element(local.eks_public_subs, idx)]
       instance_types  = [var.instance_type]
-      min_size        = 0
-      max_size        = 3
+      min_size        = var.min_size
+      max_size        = var.max_size
       # Keep one warm node only in the selected warm_az
       desired_size = (local.warm_az == az ? local.warm_desired : 0)
       timeouts     = { delete = "60m" }
