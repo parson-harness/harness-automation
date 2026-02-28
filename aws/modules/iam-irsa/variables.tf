@@ -49,7 +49,7 @@ variable "inline_policy_json" {
   "Version": "2012-10-17",
   "Statement": [
     { "Effect": "Allow", "Action": ["logs:CreateLogGroup","logs:CreateLogStream","logs:PutLogEvents"], "Resource": "*" },
-    { "Effect": "Allow", "Action": ["ecr:GetAuthorizationToken","ecr:BatchCheckLayerAvailability","ecr:GetDownloadUrlForLayer","ecr:BatchGetImage"], "Resource": "*" },
+    { "Effect": "Allow", "Action": ["ecr:GetAuthorizationToken","ecr:BatchCheckLayerAvailability","ecr:GetDownloadUrlForLayer","ecr:BatchGetImage","ecr:DescribeImages","ecr:ListImages"], "Resource": "*" },
     { "Effect": "Allow", "Action": ["sts:AssumeRole"], "Resource": "*" },
     {
       "Effect": "Allow",
@@ -74,6 +74,23 @@ variable "inline_policy_json" {
         "iam:GetRole"
       ],
       "Resource": "*"
+    },
+    {
+      "Sid": "LambdaDeployment",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:GetFunction",
+        "lambda:GetFunctionConfiguration",
+        "lambda:UpdateFunctionCode",
+        "lambda:UpdateFunctionConfiguration",
+        "lambda:PublishVersion",
+        "lambda:CreateAlias",
+        "lambda:UpdateAlias",
+        "lambda:GetAlias",
+        "lambda:ListVersionsByFunction",
+        "lambda:ListAliases"
+      ],
+      "Resource": "arn:aws:lambda:*:*:function:*"
     }
   ]
 }
