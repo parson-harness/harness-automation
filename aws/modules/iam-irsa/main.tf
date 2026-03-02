@@ -27,7 +27,7 @@ locals {
     try(data.aws_iam_openid_connect_provider.by_url[0].arn, null)
   )
 
-  sa_sub                 = "system:serviceaccount:${var.namespace}:${var.service_account_name}"
+  sa_sub                 = var.allow_all_delegate_namespaces ? "system:serviceaccount:harness-delegate-*:*" : "system:serviceaccount:${var.namespace}:${var.service_account_name}"
   effective_cluster_name = coalesce(var.cluster_name, "unknown-cluster")
 }
 
@@ -54,7 +54,7 @@ data "aws_iam_policy_document" "trust" {
       identifiers = [local.effective_oidc_provider_arn]
     }
     condition {
-      test     = "StringEquals"
+      test     = var.allow_all_delegate_namespaces ? "StringLike" : "StringEquals"
       variable = "${replace(local.effective_oidc_issuer_url, "https://", "")}:sub"
       values   = [local.sa_sub]
     }

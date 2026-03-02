@@ -82,6 +82,12 @@ variable "delegate_service_account" {
   default     = "harness-delegate"
 }
 
+variable "allow_all_delegate_namespaces" {
+  description = "If true, allow any ServiceAccount in harness-delegate-* namespaces to assume the IRSA role. Useful for multiple POV delegates."
+  type        = bool
+  default     = false
+}
+
 variable "artifacts_bucket" {
   description = "Optional S3 bucket name for artifacts (delegate gets R/W)."
   type        = string

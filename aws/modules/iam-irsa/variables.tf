@@ -41,6 +41,12 @@ variable "resolve_from_cluster" {
   default     = true
 }
 
+variable "allow_all_delegate_namespaces" {
+  description = "If true, allow any ServiceAccount in harness-delegate-* namespaces to assume this role. Useful for multiple POV delegates."
+  type        = bool
+  default     = false
+}
+
 variable "inline_policy_json" {
   description = "JSON for the delegate IAM policy. Provide least-privilege required for your use case."
   type        = string
@@ -49,7 +55,7 @@ variable "inline_policy_json" {
   "Version": "2012-10-17",
   "Statement": [
     { "Effect": "Allow", "Action": ["logs:CreateLogGroup","logs:CreateLogStream","logs:PutLogEvents"], "Resource": "*" },
-    { "Effect": "Allow", "Action": ["ecr:GetAuthorizationToken","ecr:BatchCheckLayerAvailability","ecr:GetDownloadUrlForLayer","ecr:BatchGetImage","ecr:DescribeImages","ecr:ListImages","ecr:PutImage","ecr:InitiateLayerUpload","ecr:UploadLayerPart","ecr:CompleteLayerUpload"], "Resource": "*" },
+    { "Effect": "Allow", "Action": ["ecr:GetAuthorizationToken","ecr:BatchCheckLayerAvailability","ecr:GetDownloadUrlForLayer","ecr:BatchGetImage","ecr:DescribeImages","ecr:DescribeRepositories","ecr:ListImages","ecr:PutImage","ecr:InitiateLayerUpload","ecr:UploadLayerPart","ecr:CompleteLayerUpload"], "Resource": "*" },
     { "Effect": "Allow", "Action": ["sts:AssumeRole"], "Resource": "*" },
     {
       "Effect": "Allow",
@@ -92,7 +98,9 @@ variable "inline_policy_json" {
         "lambda:CreateFunction",
         "lambda:DeleteFunction",
         "lambda:InvokeFunction",
-        "lambda:TagResource"
+        "lambda:TagResource",
+        "lambda:UntagResource",
+        "lambda:ListTags"
       ],
       "Resource": "arn:aws:lambda:*:*:function:*"
     }

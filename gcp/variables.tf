@@ -11,7 +11,7 @@ variable "region" {
 variable "label" {
   description = "A unique identifier for the cloud resources provisioned by this TF"
   type        = string
-  default     = "harness"  # Optional: provide a default value
+  default     = "harness" # Optional: provide a default value
 }
 
 variable "gke_username" {

@@ -32,9 +32,10 @@ module "iam_irsa" {
   namespace            = var.delegate_namespace
   service_account_name = var.delegate_service_account
 
-  resolve_from_cluster = var.create_eks ? false : true
-  oidc_provider_arn    = var.create_eks ? module.eks[0].oidc_provider_arn : null
-  oidc_issuer_url      = var.create_eks ? module.eks[0].cluster_oidc_issuer_url : null
+  resolve_from_cluster          = var.create_eks ? false : true
+  oidc_provider_arn             = var.create_eks ? module.eks[0].oidc_provider_arn : null
+  oidc_issuer_url               = var.create_eks ? module.eks[0].cluster_oidc_issuer_url : null
+  allow_all_delegate_namespaces = var.allow_all_delegate_namespaces
 }
 
 # Providers use these data sources (works for both new/existing clusters)
