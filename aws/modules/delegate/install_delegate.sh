@@ -11,7 +11,7 @@ warn() { printf "\nWARN: %s\n" "$*" >&2; }
 err()  { printf "\nERROR: %s\n" "$*" >&2; exit 1; }
 
 # Remove CR/LF/TAB and any remaining C0 control chars from single-line values
-scrub() { printf %s "$1" | LC_ALL=C tr -d '\r\n\t' | sed -E $'s/[\x00-\x1F]//g'; }
+scrub() { printf %s "$1" | LC_ALL=C tr -d '\r\n\t' | LC_ALL=C tr -d '\000-\037'; }
 # Single-quote YAML scalar safely (after scrubbing)
 yamlq() { local s; s="$(scrub "$1")"; s=${s//\'/\'\'}; printf "'%s'" "$s"; }
 
@@ -39,7 +39,7 @@ tf_output_root() {
   val="$(printf %s "$raw" \
         | sed -E $'s/\x1B\\[[0-9;]*[A-Za-z]//g' \
         | LC_ALL=C tr -d '\r' \
-        | sed -E $'s/[\x00-\x1F]//g')"
+        | LC_ALL=C tr -d '\000-\037')"
   # Treat known warnings as empty
   if printf %s "$val" | grep -qi 'warning: no outputs found'; then
     echo ""
