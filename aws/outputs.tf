@@ -20,6 +20,31 @@ output "delegate_role_arn" {
   value       = module.iam_irsa.role_arn
 }
 
+output "delegate_release_name" {
+  description = "Helm release name for the Harness delegate when installed by Terraform."
+  value       = var.create_delegate ? module.delegate[0].release_name : null
+}
+
+output "delegate_namespace" {
+  description = "Namespace for the Harness delegate when installed by Terraform."
+  value       = var.create_delegate ? module.delegate[0].namespace : null
+}
+
+output "delegate_service_account_name" {
+  description = "Service account name used by the Harness delegate when installed by Terraform."
+  value       = var.create_delegate ? module.delegate[0].service_account_name : null
+}
+
+output "delegate_image" {
+  description = "Fully qualified container image used by the Terraform-managed Harness delegate."
+  value       = var.create_delegate ? module.delegate[0].delegate_image : null
+}
+
+output "delegate_image_tag" {
+  description = "Resolved delegate image tag used by the Terraform-managed Harness delegate."
+  value       = var.create_delegate ? module.delegate[0].delegate_image_tag : null
+}
+
 # Nice-to-have Grafana hints (null when not created)
 output "grafana_namespace" {
   value       = var.create_grafana ? module.grafana[0].namespace : null

@@ -146,6 +146,137 @@ variable "delegate_service_account" {
   default     = "harness-delegate"
 }
 
+variable "create_delegate" {
+  description = "Install the Harness delegate via Terraform-managed Helm."
+  type        = bool
+  default     = false
+}
+
+variable "delegate_name" {
+  description = "Harness delegate name."
+  type        = string
+  default     = ""
+  validation {
+    condition     = !var.create_delegate || length(trimspace(var.delegate_name)) > 0
+    error_message = "delegate_name must be set when create_delegate is true."
+  }
+}
+
+variable "delegate_release_name" {
+  description = "Helm release name for the Harness delegate. Defaults to delegate_name when empty."
+  type        = string
+  default     = ""
+}
+
+variable "delegate_account_id" {
+  description = "Harness account ID used by the delegate."
+  type        = string
+  default     = ""
+  validation {
+    condition     = !var.create_delegate || length(trimspace(var.delegate_account_id)) > 0
+    error_message = "delegate_account_id must be set when create_delegate is true."
+  }
+}
+
+variable "delegate_token" {
+  description = "Harness delegate token."
+  type        = string
+  default     = ""
+  sensitive   = true
+  validation {
+    condition     = !var.create_delegate || length(trimspace(var.delegate_token)) > 0
+    error_message = "delegate_token must be set when create_delegate is true."
+  }
+}
+
+variable "delegate_manager_endpoint" {
+  description = "Harness manager endpoint for the delegate."
+  type        = string
+  default     = "https://app.harness.io"
+}
+
+variable "delegate_replicas" {
+  description = "Number of Harness delegate replicas."
+  type        = number
+  default     = 1
+}
+
+variable "delegate_k8s_permissions_type" {
+  description = "Harness delegate Kubernetes permissions mode, such as CLUSTER_ADMIN or CLUSTER_VIEWER."
+  type        = string
+  default     = "CLUSTER_ADMIN"
+}
+
+variable "delegate_poll_for_tasks" {
+  description = "If true, the delegate polls for tasks instead of using socket connections."
+  type        = bool
+  default     = false
+}
+
+variable "delegate_description" {
+  description = "Optional Harness delegate description."
+  type        = string
+  default     = ""
+}
+
+variable "delegate_tags" {
+  description = "Optional list of Harness delegate tags."
+  type        = list(string)
+  default     = []
+}
+
+variable "delegate_annotations" {
+  description = "Optional annotations to apply to the delegate pod and deployment."
+  type        = map(string)
+  default     = {}
+}
+
+variable "delegate_custom_envs" {
+  description = "Optional additional environment variables for the delegate pod."
+  type = list(object({
+    name  = string
+    value = string
+  }))
+  default = []
+}
+
+variable "delegate_chart_version" {
+  description = "Optional Harness delegate Helm chart version. Leave empty to use the latest chart version from the repo."
+  type        = string
+  default     = ""
+}
+
+variable "delegate_image_registry" {
+  description = "Container registry host for the Harness delegate image."
+  type        = string
+  default     = "us-docker.pkg.dev"
+}
+
+variable "delegate_image_repository" {
+  description = "Repository path for the Harness delegate image inside the container registry."
+  type        = string
+  default     = "gar-prod-setup/harness-public/harness/delegate"
+}
+
+variable "delegate_image_tag" {
+  description = "Optional delegate image tag override. Leave empty to resolve the latest plain release tag from public GAR."
+  type        = string
+  default     = ""
+}
+
+variable "delegate_upgrader_enabled" {
+  description = "Enable the in-cluster Harness upgrader CronJob. Disabled by default because Terraform manages the delegate image version."
+  type        = bool
+  default     = false
+}
+
+variable "delegate_upgrader_token" {
+  description = "Optional Harness upgrader token. If empty and upgrader is enabled, delegate_token is reused."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "allow_all_delegate_namespaces" {
   description = "If true, allow any ServiceAccount in harness-delegate-* namespaces to assume the IRSA role. Useful for multiple POV delegates."
   type        = bool

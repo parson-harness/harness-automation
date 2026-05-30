@@ -157,6 +157,36 @@ module "cluster_autoscaler" {
   depends_on = [module.cluster_autoscaler_irsa]
 }
 
+module "delegate" {
+  source = "./modules/delegate"
+  count  = var.create_delegate ? 1 : 0
+
+  delegate_namespace            = var.delegate_namespace
+  delegate_service_account      = var.delegate_service_account
+  delegate_name                 = var.delegate_name
+  delegate_release_name         = var.delegate_release_name
+  delegate_account_id           = var.delegate_account_id
+  delegate_token                = var.delegate_token
+  delegate_manager_endpoint     = var.delegate_manager_endpoint
+  delegate_replicas             = var.delegate_replicas
+  delegate_k8s_permissions_type = var.delegate_k8s_permissions_type
+  delegate_poll_for_tasks       = var.delegate_poll_for_tasks
+  delegate_description          = var.delegate_description
+  delegate_tags                 = var.delegate_tags
+  delegate_annotations          = var.delegate_annotations
+  delegate_custom_envs          = var.delegate_custom_envs
+  delegate_chart_version        = var.delegate_chart_version
+  delegate_image_registry       = var.delegate_image_registry
+  delegate_image_repository     = var.delegate_image_repository
+  delegate_image_tag            = var.delegate_image_tag
+  delegate_upgrader_enabled     = var.delegate_upgrader_enabled
+  delegate_upgrader_token       = var.delegate_upgrader_token
+  irsa_role_arn                 = module.iam_irsa.role_arn
+  tag_owner                     = var.tag_owner
+
+  depends_on = [module.iam_irsa]
+}
+
 # Optional Grafana (can be applied now or later)
 # Only attempt DNS if we don't already have an IP
 # Resolve NLB A record only if we have a hostname and no IP yet
