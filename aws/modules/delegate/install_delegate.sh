@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-# Harness Delegate installer (Helm) — hardened for TF/ANSI/CRLF and safe YAML
 set -euo pipefail
 
-# Make Terraform output automation-friendly (no ANSI)
 export TF_IN_AUTOMATION=1
 export TF_CLI_ARGS="-no-color"
 
@@ -10,17 +8,7 @@ say()  { printf "\n==> %s\n" "$*"; }
 warn() { printf "\nWARN: %s\n" "$*" >&2; }
 err()  { printf "\nERROR: %s\n" "$*" >&2; exit 1; }
 
-# Remove CR/LF/TAB and any remaining C0 control chars from single-line values
 scrub() { printf %s "$1" | LC_ALL=C tr -d '\r\n\t' | LC_ALL=C tr -d '\000-\037'; }
-# Single-quote YAML scalar safely (after scrubbing)
-yamlq() { local s; s="$(scrub "$1")"; s=${s//\'/\'\'}; printf "'%s'" "$s"; }
-
-sanitize_release() {
-  echo "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-+//; s/-+$//' | cut -c1-53
-}
-is_valid_region() { [[ "$1" =~ ^[a-z]{2}(-[a-z]+)+-[0-9]+$ ]]; }
-is_iam_role_arn() { [[ "$1" =~ ^arn:aws(-[a-z0-9]+)?:iam::[0-9]{12}:role/.+ ]]; }
-
 prompt() {
   local v="$1"; shift
   if [ -z "${!v:-}" ]; then
@@ -30,17 +18,23 @@ prompt() {
     export "$v"
   fi
 }
+prompt_secret() {
+  local v="$1"; shift
+  if [ -z "${!v:-}" ]; then
+    local ans
+    read -rsp "$*: " ans
+    printf '\n'
+    printf -v "$v" "%s" "$(scrub "$ans")"
+    export "$v"
+  fi
+}
+is_valid_region() { [[ "$1" =~ ^[a-z]{2}(-[a-z]+)+-[0-9]+$ ]]; }
+is_true() { [[ "${1,,}" == "true" || "$1" == "1" || "${1,,}" == "yes" || "${1,,}" == "y" ]]; }
 
-# Read a Terraform output from root (aws/) safely
 tf_output_root() {
   local key="$1" raw val
   raw="$("$TERRAFORM_BIN" -chdir="$ROOT_DIR" output -raw "$key" 2>/dev/null || true)"
-  # Strip ANSI + control chars
-  val="$(printf %s "$raw" \
-        | sed -E $'s/\x1B\\[[0-9;]*[A-Za-z]//g' \
-        | LC_ALL=C tr -d '\r' \
-        | LC_ALL=C tr -d '\000-\037')"
-  # Treat known warnings as empty
+  val="$(printf %s "$raw" | sed -E $'s/\x1B\\[[0-9;]*[A-Za-z]//g' | LC_ALL=C tr -d '\r' | LC_ALL=C tr -d '\000-\037')"
   if printf %s "$val" | grep -qi 'warning: no outputs found'; then
     echo ""
   else
@@ -48,45 +42,13 @@ tf_output_root() {
   fi
 }
 
-# ---- ONLY echo the image to stdout; send logs to stderr ----
-resolve_latest_delegate_image() {
-  [ -n "${DELEGATE_IMAGE:-}" ] && { echo "$DELEGATE_IMAGE"; return 0; }
-
-  local hub="https://hub.docker.com/v2/repositories/harness/delegate/tags/?page_size=100&ordering=last_updated"
-  local tag=""
-  say "Resolving latest harness/delegate tag from Docker Hub…" >&2
-  if command -v jq >/dev/null 2>&1; then
-    tag="$(curl -fsSL "$hub" | jq -r '.results[].name' | grep -E '^[0-9]{2}\.[0-9]{2}\.[0-9]{5}$' | sort -V | tail -n1 || true)"
-  else
-    tag="$(
-      curl -fsSL "$hub" \
-      | tr ',' '\n' | grep -oE '"name":[[:space:]]*"[^"]+"' \
-      | sed -E 's/.*"name":[[:space:]]*"([^"]+)".*/\1/' \
-      | grep -E '^[0-9]{2}\.[0-9]{2}\.[0-9]{5}$' \
-      | sort -V | tail -n1 || true
-    )"
-  fi
-  local prefix="${DELEGATE_IMAGE_PREFIX:-us-docker.pkg.dev/gar-prod-setup/harness-public/harness/delegate}"
-  if [ -n "$tag" ]; then echo "${prefix}:${tag}"; return 0; fi
-
-  warn "Could not determine latest tag from Docker Hub."
-  if [ -n "${HARNESS_API_KEY:-}" ] && [ -n "${HARNESS_ACCOUNT_ID:-}" ]; then
-    local api="${HARNESS_API_BASE:-https://app.harness.io}" ver_json version
-    ver_json="$(curl -sfSL -H "x-api-key: ${HARNESS_API_KEY}" \
-      "${api}/ng/api/delegate-setup/latest-supported-version?accountIdentifier=${HARNESS_ACCOUNT_ID}" || true)"
-    version="$(printf '%s' "$ver_json" | sed -n 's/.*"data"[[:space:]]*:[[:space:]]*"\([0-9][0-9]\.[0-9][0-9]\.[0-9]\{5\}\)".*/\1/p')"
-    if [ -n "$version" ]; then echo "${prefix}:${version}"; return 0; fi
-    warn "Harness API fallback did not return a version."
-  fi
-  echo ""  # no override
-}
-
-# ---- locate root / terraform ----
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOT_DIR="${ROOT_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+ROOT_DIR="${ROOT_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 TERRAFORM_BIN="${TERRAFORM_BIN:-terraform}"
+PLAN_FILE="$(mktemp -t delegate-plan.XXXXXX)"
+TFVARS_FILE="$(mktemp -t delegate-vars.XXXXXX.json)"
+trap 'rm -f "$PLAN_FILE" "$TFVARS_FILE"' EXIT
 
-# ---- inputs / env ----
 export CLUSTER_NAME="${CLUSTER_NAME:-$(tf_output_root cluster_name)}"
 export REGION="${REGION:-$(tf_output_root region)}"
 export NS="${NS:-harness-delegate-ng}"
@@ -94,82 +56,121 @@ export SA="${SA:-harness-delegate}"
 export HARNESS_ACCOUNT_ID="${HARNESS_ACCOUNT_ID:-}"
 export DELEGATE_TOKEN="${DELEGATE_TOKEN:-}"
 export DELEGATE_NAME="${DELEGATE_NAME:-}"
-export MANAGER_ENDPOINT="${MANAGER_ENDPOINT:-https://app.harness.io/gratis}"
+export DELEGATE_RELEASE_NAME="${DELEGATE_RELEASE_NAME:-}"
+export MANAGER_ENDPOINT="${MANAGER_ENDPOINT:-https://app.harness.io}"
 export DELEGATE_REPLICAS="${DELEGATE_REPLICAS:-1}"
-export IRSA_ROLE_ARN="${IRSA_ROLE_ARN:-$(tf_output_root delegate_role_arn)}"
+export DELEGATE_K8S_PERMISSIONS_TYPE="${DELEGATE_K8S_PERMISSIONS_TYPE:-CLUSTER_ADMIN}"
+export DELEGATE_POLL_FOR_TASKS="${DELEGATE_POLL_FOR_TASKS:-false}"
+export DELEGATE_DESCRIPTION="${DELEGATE_DESCRIPTION:-}"
+export DELEGATE_TAGS="${DELEGATE_TAGS:-}"
+export DELEGATE_IMAGE_TAG="${DELEGATE_IMAGE_TAG:-}"
+export DELEGATE_UPGRADER_ENABLED="${DELEGATE_UPGRADER_ENABLED:-false}"
+export DELEGATE_UPGRADER_TOKEN="${DELEGATE_UPGRADER_TOKEN:-}"
 export KUBECONFIG_UPDATE="${KUBECONFIG_UPDATE:-auto}"
 export CONTEXT_NAME="${CONTEXT_NAME:-}"
+export RUN_TERRAFORM_INIT="${RUN_TERRAFORM_INIT:-true}"
+export AUTO_APPROVE="${AUTO_APPROVE:-false}"
 
-# ---- prompts / validate ----
-prompt CLUSTER_NAME        "EKS cluster name"
-prompt REGION              "AWS region (e.g. us-east-1)"
-prompt HARNESS_ACCOUNT_ID  "Harness Account ID"
-prompt DELEGATE_TOKEN      "Harness Delegate Token"
-prompt DELEGATE_NAME       "Delegate name (unique per namespace)"
+prompt CLUSTER_NAME "EKS cluster name"
+prompt REGION "AWS region (e.g. us-east-1)"
+prompt HARNESS_ACCOUNT_ID "Harness Account ID"
+prompt_secret DELEGATE_TOKEN "Harness Delegate Token"
+prompt DELEGATE_NAME "Delegate name"
+
 is_valid_region "$REGION" || err "REGION '$REGION' doesn't look like an AWS region (e.g., us-east-1)."
 
-# Final scrub on env-derived values (protect YAML)
-HARNESS_ACCOUNT_ID="$(scrub "${HARNESS_ACCOUNT_ID}")"
-DELEGATE_TOKEN="$(scrub "${DELEGATE_TOKEN}")"
-DELEGATE_NAME="$(scrub "${DELEGATE_NAME}")"
-NS="$(scrub "${NS}")"
-SA="$(scrub "${SA}")"
-MANAGER_ENDPOINT="$(scrub "${MANAGER_ENDPOINT}")"
-IRSA_ROLE_ARN="$(scrub "${IRSA_ROLE_ARN}")"
+CLUSTER_NAME="$(scrub "$CLUSTER_NAME")"
+REGION="$(scrub "$REGION")"
+NS="$(scrub "$NS")"
+SA="$(scrub "$SA")"
+HARNESS_ACCOUNT_ID="$(scrub "$HARNESS_ACCOUNT_ID")"
+DELEGATE_TOKEN="$(scrub "$DELEGATE_TOKEN")"
+DELEGATE_NAME="$(scrub "$DELEGATE_NAME")"
+DELEGATE_RELEASE_NAME="$(scrub "$DELEGATE_RELEASE_NAME")"
+MANAGER_ENDPOINT="$(scrub "$MANAGER_ENDPOINT")"
+DELEGATE_REPLICAS="$(scrub "$DELEGATE_REPLICAS")"
+DELEGATE_K8S_PERMISSIONS_TYPE="$(scrub "$DELEGATE_K8S_PERMISSIONS_TYPE")"
+DELEGATE_POLL_FOR_TASKS="$(scrub "$DELEGATE_POLL_FOR_TASKS")"
+DELEGATE_DESCRIPTION="$(scrub "$DELEGATE_DESCRIPTION")"
+DELEGATE_TAGS="$(scrub "$DELEGATE_TAGS")"
+DELEGATE_IMAGE_TAG="$(scrub "$DELEGATE_IMAGE_TAG")"
+DELEGATE_UPGRADER_ENABLED="$(scrub "$DELEGATE_UPGRADER_ENABLED")"
+DELEGATE_UPGRADER_TOKEN="$(scrub "$DELEGATE_UPGRADER_TOKEN")"
 
-# Validate IRSA; if junk (e.g., TF warning), drop it gracefully
-if [ -n "${IRSA_ROLE_ARN}" ] && ! is_iam_role_arn "${IRSA_ROLE_ARN}"; then
-  warn "Ignoring invalid IRSA_ROLE_ARN (does not look like an IAM role ARN)."
-  IRSA_ROLE_ARN=""
+if [ "$KUBECONFIG_UPDATE" = "auto" ]; then
+  say "Updating kubeconfig for cluster '${CLUSTER_NAME}' in ${REGION}"
+  aws eks --region "$REGION" update-kubeconfig --name "$CLUSTER_NAME" >/dev/null
 fi
 
-RELEASE_NAME="${RELEASE_NAME:-$(sanitize_release "$DELEGATE_NAME")}"
-[ -n "$RELEASE_NAME" ] || err "Release name derived from DELEGATE_NAME is empty."
-
-# ---- kube context ----
-[ "$KUBECONFIG_UPDATE" = "auto" ] && { say "Updating kubeconfig for cluster '${CLUSTER_NAME}' in ${REGION}"; aws eks --region "$REGION" update-kubeconfig --name "$CLUSTER_NAME" >/dev/null; }
-[ -n "$CONTEXT_NAME" ] && { say "Switching kubectl context to ${CONTEXT_NAME}"; kubectl config use-context "$CONTEXT_NAME" >/dev/null; }
-
-# ---- namespace / SA ----
-say "Ensuring namespace '${NS}' and ServiceAccount '${SA}' exist"
-kubectl get ns "$NS" >/dev/null 2>&1 || kubectl create ns "$NS"
-kubectl -n "$NS" get sa "$SA" >/dev/null 2>&1 || kubectl -n "$NS" create serviceaccount "$SA"
-
-# ---- helm repo ----
-say "Ensuring Harness Delegate Helm repo is configured"
-helm repo add harness-delegate https://app.harness.io/storage/harness-download/delegate-helm-chart/ >/dev/null 2>&1 || true
-helm repo update >/dev/null 2>&1 || true
-
-# ---- uniqueness check ----
-if helm -n "$NS" status "$RELEASE_NAME" >/dev/null 2>&1; then
-  err "A Helm release named '$RELEASE_NAME' already exists in namespace '$NS'. Choose a different DELEGATE_NAME."
+if [ -n "$CONTEXT_NAME" ]; then
+  say "Switching kubectl context to ${CONTEXT_NAME}"
+  kubectl config use-context "$CONTEXT_NAME" >/dev/null
 fi
 
-# ---- image (latest) ----
-IMG="$(resolve_latest_delegate_image || true)"
-[ -n "$IMG" ] && say "Using delegate image: $IMG"
+if is_true "$RUN_TERRAFORM_INIT"; then
+  say "Running terraform init"
+  "$TERRAFORM_BIN" -chdir="$ROOT_DIR" init -input=false >/dev/null
+fi
 
-# ---- values.yaml (quoted) ----
-TMP="$(mktemp -t delegate-values.XXXX.yaml)"; trap 'rm -f "$TMP"' EXIT
-{
-  echo "delegateName: $(yamlq "$DELEGATE_NAME")"
-  echo "accountId: $(yamlq "$HARNESS_ACCOUNT_ID")"
-  echo "delegateToken: $(yamlq "$DELEGATE_TOKEN")"
-  echo "managerEndpoint: $(yamlq "$MANAGER_ENDPOINT")"
-  echo "k8sServiceAccount: $(yamlq "$SA")"
-  echo "replicas: ${DELEGATE_REPLICAS}"
-  [ -n "$IRSA_ROLE_ARN" ] && echo "irsaRoleArn: $(yamlq "$IRSA_ROLE_ARN")"
-  [ -n "$IMG" ] && echo "delegateDockerImage: $(yamlq "$IMG")"
-} | LC_ALL=C tr -d '\r' > "$TMP"
+say "Preparing Terraform inputs for the delegate module"
+python3 - <<'PY' > "$TFVARS_FILE"
+import json
+import os
 
-# ---- install/upgrade ----
-say "Installing delegate '${DELEGATE_NAME}' as Helm release '${RELEASE_NAME}' in ns '${NS}'"
-helm upgrade --install "$RELEASE_NAME" harness-delegate/harness-delegate-ng \
-  --namespace "$NS" --create-namespace -f "$TMP"
+def truthy(value: str) -> bool:
+    return value.lower() in {"1", "true", "yes", "y"}
 
-say "Waiting for deployment rollout…"
-kubectl -n "$NS" rollout status "deploy/${DELEGATE_NAME}" --timeout=5m || true
-kubectl -n "$NS" get pods -o wide
+tags = [tag.strip() for tag in os.environ.get("DELEGATE_TAGS", "").split(",") if tag.strip()]
 
-say "Done ✅  Release='${RELEASE_NAME}'  Delegate='${DELEGATE_NAME}'  Namespace='${NS}'"
-echo "Tip: uninstall with: ./destroy.sh --delegate --delegate-name '${DELEGATE_NAME}' --yes"
+data = {
+    "create_delegate": True,
+    "delegate_namespace": os.environ["NS"],
+    "delegate_service_account": os.environ["SA"],
+    "delegate_name": os.environ["DELEGATE_NAME"],
+    "delegate_account_id": os.environ["HARNESS_ACCOUNT_ID"],
+    "delegate_token": os.environ["DELEGATE_TOKEN"],
+    "delegate_manager_endpoint": os.environ["MANAGER_ENDPOINT"],
+    "delegate_replicas": int(os.environ["DELEGATE_REPLICAS"]),
+    "delegate_k8s_permissions_type": os.environ["DELEGATE_K8S_PERMISSIONS_TYPE"],
+    "delegate_poll_for_tasks": truthy(os.environ["DELEGATE_POLL_FOR_TASKS"]),
+    "delegate_description": os.environ.get("DELEGATE_DESCRIPTION", ""),
+    "delegate_tags": tags,
+    "delegate_upgrader_enabled": truthy(os.environ["DELEGATE_UPGRADER_ENABLED"]),
+}
+
+if os.environ.get("DELEGATE_RELEASE_NAME"):
+    data["delegate_release_name"] = os.environ["DELEGATE_RELEASE_NAME"]
+
+if os.environ.get("DELEGATE_IMAGE_TAG"):
+    data["delegate_image_tag"] = os.environ["DELEGATE_IMAGE_TAG"]
+
+if os.environ.get("DELEGATE_UPGRADER_TOKEN"):
+    data["delegate_upgrader_token"] = os.environ["DELEGATE_UPGRADER_TOKEN"]
+
+print(json.dumps(data))
+PY
+
+TARGET_ARGS=("-target=module.iam_irsa" "-target=module.delegate")
+
+say "Planning delegate install/update"
+"$TERRAFORM_BIN" -chdir="$ROOT_DIR" plan -input=false -var-file="$TFVARS_FILE" "${TARGET_ARGS[@]}" -out="$PLAN_FILE"
+
+if ! is_true "$AUTO_APPROVE"; then
+  local_confirm=""
+  read -rp "Apply this delegate plan? [y/N]: " local_confirm
+  if ! is_true "$local_confirm"; then
+    err "Cancelled."
+  fi
+fi
+
+say "Applying delegate plan"
+"$TERRAFORM_BIN" -chdir="$ROOT_DIR" apply "$PLAN_FILE"
+
+RELEASE_OUT="$(tf_output_root delegate_release_name)"
+NS_OUT="$(tf_output_root delegate_namespace)"
+SA_OUT="$(tf_output_root delegate_service_account_name)"
+IMG_OUT="$(tf_output_root delegate_image)"
+
+say "Done ✅  Release='${RELEASE_OUT:-$DELEGATE_NAME}'  Delegate='${DELEGATE_NAME}'  Namespace='${NS_OUT:-$NS}'"
+[ -n "$SA_OUT" ] && echo "ServiceAccount: $SA_OUT"
+[ -n "$IMG_OUT" ] && echo "Image: $IMG_OUT"
