@@ -6,6 +6,8 @@ service:
     ${k}: "${v}"
 %{ endfor ~}
 
+replicaCount: ${replica_count}
+
 # --- Persistence
 persistence:
   enabled: true

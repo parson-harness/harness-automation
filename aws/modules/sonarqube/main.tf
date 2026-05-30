@@ -4,6 +4,7 @@ locals {
     service_type       = var.service_type
     storage_class_name = var.storage_class_name
     persistence_size   = var.persistence_size
+    replica_count      = var.replica_count
     resources          = var.resources
     annotations        = var.annotations
     node_selector      = var.node_selector
@@ -35,7 +36,7 @@ resource "helm_release" "sonarqube" {
   values = local.values_list
 
   timeout         = 1200
-  wait            = true
+  wait            = var.replica_count > 0
   cleanup_on_fail = true
 
   depends_on = [kubernetes_namespace.this]

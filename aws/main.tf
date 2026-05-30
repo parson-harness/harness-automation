@@ -7,7 +7,17 @@ module "eks" {
 
   cluster                  = var.cluster
   tag_owner                = var.tag_owner
+  cluster_version          = var.cluster_version
   instance_type            = var.instance_type
+  min_size                 = var.min_size
+  desired_size             = var.desired_size
+  max_size                 = var.max_size
+  enable_cluster_autoscaler = var.enable_cluster_autoscaler
+  mixed_capacity_enabled   = var.mixed_capacity_enabled
+  spot_percentage          = var.spot_percentage
+  spot_instance_types      = var.spot_instance_types
+  warm_az                  = var.warm_az
+  warm_desired             = var.warm_desired
   delegate_namespace       = var.delegate_namespace
   delegate_service_account = var.delegate_service_account
   artifacts_bucket         = var.artifacts_bucket
@@ -18,6 +28,42 @@ module "eks" {
 # Resolve target cluster name for both paths
 locals {
   target_cluster_name = var.create_eks ? module.eks[0].cluster_name : var.existing_cluster_name
+  cluster_autoscaler_image_tag_effective = var.cluster_autoscaler_image_tag != "" ? var.cluster_autoscaler_image_tag : "v${var.cluster_version}.0"
+  cluster_autoscaler_policy_json = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "autoscaling:DescribeAutoScalingGroups",
+          "autoscaling:DescribeAutoScalingInstances",
+          "autoscaling:DescribeLaunchConfigurations",
+          "autoscaling:DescribeScalingActivities",
+          "autoscaling:DescribeTags",
+          "ec2:DescribeImages",
+          "ec2:DescribeInstanceTypes",
+          "ec2:DescribeLaunchTemplateVersions",
+          "ec2:GetInstanceTypesFromInstanceRequirements",
+          "eks:DescribeNodegroup"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "autoscaling:SetDesiredCapacity",
+          "autoscaling:TerminateInstanceInAutoScalingGroup"
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:ResourceTag/k8s.io/cluster-autoscaler/enabled" = "true"
+            "aws:ResourceTag/k8s.io/cluster-autoscaler/${local.target_cluster_name}" = "owned"
+          }
+        }
+      }
+    ]
+  })
   # If a root-level override is provided (e.g., in terraform.tfvars), use it.
   # Otherwise fall back to the Prometheus module’s output.
   prometheus_url_effective = (
@@ -36,6 +82,22 @@ module "iam_irsa" {
   oidc_provider_arn             = var.create_eks ? module.eks[0].oidc_provider_arn : null
   oidc_issuer_url               = var.create_eks ? module.eks[0].cluster_oidc_issuer_url : null
   allow_all_delegate_namespaces = var.allow_all_delegate_namespaces
+}
+
+module "cluster_autoscaler_irsa" {
+  source = "./modules/iam-irsa"
+  count  = var.enable_cluster_autoscaler ? 1 : 0
+
+  cluster_name         = local.target_cluster_name
+  namespace            = var.cluster_autoscaler_namespace
+  service_account_name = var.cluster_autoscaler_service_account_name
+  role_name            = "${local.target_cluster_name}-cluster-autoscaler-irsa"
+
+  resolve_from_cluster = var.create_eks ? false : true
+  oidc_provider_arn    = var.create_eks ? module.eks[0].oidc_provider_arn : null
+  oidc_issuer_url      = var.create_eks ? module.eks[0].cluster_oidc_issuer_url : null
+
+  inline_policy_json = local.cluster_autoscaler_policy_json
 }
 
 # Providers use these data sources (works for both new/existing clusters)
@@ -79,6 +141,22 @@ module "prometheus" {
   node_exporter_enabled      = var.node_exporter_enabled
 }
 
+module "cluster_autoscaler" {
+  source = "./modules/cluster-autoscaler"
+  count  = var.enable_cluster_autoscaler ? 1 : 0
+
+  cluster_name         = local.target_cluster_name
+  namespace            = var.cluster_autoscaler_namespace
+  service_account_name = var.cluster_autoscaler_service_account_name
+  aws_region           = var.region
+  chart_version        = var.cluster_autoscaler_chart_version
+  image_tag            = local.cluster_autoscaler_image_tag_effective
+  replica_count        = var.cluster_autoscaler_replica_count
+  role_arn             = module.cluster_autoscaler_irsa[0].role_arn
+
+  depends_on = [module.cluster_autoscaler_irsa]
+}
+
 # Optional Grafana (can be applied now or later)
 # Only attempt DNS if we don't already have an IP
 # Resolve NLB A record only if we have a hostname and no IP yet
@@ -115,6 +193,7 @@ module "grafana" {
   namespace    = var.grafana_namespace
   release_name = var.grafana_release
   service_type = var.grafana_service_type
+  replica_count = var.replica_count
 
   host                = local.grafana_host_effective != null ? local.grafana_host_effective : ""
   use_alb             = false
@@ -152,7 +231,8 @@ module "sonarqube" {
   source = "./modules/sonarqube"
 
   # --- Flip this to true to install, false to skip/destroy
-  enabled = true
+  enabled = var.create_sonarqube
+  replica_count = var.sonarqube_replica_count
 
   namespace        = var.grafana_namespace
   create_namespace = false

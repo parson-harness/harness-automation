@@ -52,6 +52,12 @@ variable "instance_type" {
   default     = "t3.large"
 }
 
+variable "cluster_version" {
+  description = "Kubernetes version for the EKS control plane."
+  type        = string
+  default     = "1.32"
+}
+
 variable "min_size" {
   description = "Minimum size of cluster node group."
   type        = number
@@ -68,6 +74,64 @@ variable "max_size" {
   description = "Maximum size of cluster node group."
   type        = number
   default     = 3
+}
+
+variable "enable_cluster_autoscaler" {
+  description = "Install Cluster Autoscaler for the EKS cluster."
+  type        = bool
+  default     = false
+}
+
+variable "cluster_autoscaler_namespace" {
+  description = "Namespace where Cluster Autoscaler is installed."
+  type        = string
+  default     = "kube-system"
+}
+
+variable "cluster_autoscaler_service_account_name" {
+  description = "ServiceAccount name for Cluster Autoscaler."
+  type        = string
+  default     = "cluster-autoscaler"
+}
+
+variable "cluster_autoscaler_chart_version" {
+  description = "Helm chart version for Cluster Autoscaler."
+  type        = string
+  default     = "9.37.0"
+}
+
+variable "cluster_autoscaler_image_tag" {
+  description = "Cluster Autoscaler image tag. If empty, derive v<cluster_version>.0."
+  type        = string
+  default     = ""
+}
+
+variable "cluster_autoscaler_replica_count" {
+  description = "Replica count for Cluster Autoscaler."
+  type        = number
+  default     = 1
+}
+
+variable "mixed_capacity_enabled" {
+  description = "If true, create separate on-demand and spot managed node groups instead of the per-AZ layout."
+  type        = bool
+  default     = false
+}
+
+variable "spot_percentage" {
+  description = "Percentage of total node group capacity to place on spot instances when mixed_capacity_enabled is true."
+  type        = number
+  default     = 0
+  validation {
+    condition     = var.spot_percentage >= 0 && var.spot_percentage <= 100
+    error_message = "spot_percentage must be between 0 and 100."
+  }
+}
+
+variable "spot_instance_types" {
+  description = "Optional instance types for the spot managed node group. If empty, instance_type is used."
+  type        = list(string)
+  default     = []
 }
 
 variable "delegate_namespace" {
@@ -236,6 +300,11 @@ variable "create_sonarqube" {
   description = "Install SonarQube via Helm."
   type        = bool
   default     = false
+}
+variable "sonarqube_replica_count" {
+  description = "Number of SonarQube replicas (0 pauses the SonarQube app while keeping the Helm release installed)."
+  type        = number
+  default     = 1
 }
 variable "sonarqube_monitoring_passcode" {
   type        = string

@@ -17,6 +17,12 @@ variable "instance_type" {
   default     = "t3.large"
 }
 
+variable "cluster_version" {
+  description = "Kubernetes version for the EKS control plane"
+  type        = string
+  default     = "1.32"
+}
+
 variable "min_size" {
   description = "Minimum instance size for EKS managed node groups"
   type        = number
@@ -33,6 +39,30 @@ variable "max_size" {
   description = "Max instance size for EKS managed node groups"
   type        = number
   default     = 2
+}
+
+variable "enable_cluster_autoscaler" {
+  description = "If true, add Cluster Autoscaler discovery tags to managed node groups."
+  type        = bool
+  default     = false
+}
+
+variable "mixed_capacity_enabled" {
+  description = "If true, create separate on-demand and spot managed node groups instead of the per-AZ layout"
+  type        = bool
+  default     = false
+}
+
+variable "spot_percentage" {
+  description = "Percentage of total node group capacity to place on spot instances when mixed_capacity_enabled is true"
+  type        = number
+  default     = 0
+}
+
+variable "spot_instance_types" {
+  description = "Optional instance types for the spot managed node group. If empty, instance_type is used"
+  type        = list(string)
+  default     = []
 }
 
 variable "delegate_namespace" {

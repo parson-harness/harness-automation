@@ -174,7 +174,7 @@ module "eks" {
   version = "20.8.5"
 
   cluster_name    = local.cluster_name
-  cluster_version = "1.32"
+  cluster_version = var.cluster_version
 
   enable_irsa = true
   tags        = { Owner = var.tag_owner }
@@ -189,7 +189,6 @@ module "eks" {
     ami_type = "AL2023_x86_64_STANDARD"
   }
 
-  # One node group per AZ, pinned to a single subnet in that AZ
   eks_managed_node_groups = {
     for idx, az in local.eks_azs :
     "ng-${az}" => {
@@ -199,13 +198,22 @@ module "eks" {
       instance_types  = [var.instance_type]
       min_size        = var.min_size
       max_size        = var.max_size
-      # Keep one warm node only in the selected warm_az
-      desired_size = (local.warm_az == az ? local.warm_desired : 0)
-      timeouts     = { delete = "60m" }
+      desired_size    = (local.warm_az == az ? local.warm_desired : 0)
+      timeouts        = { delete = "60m" }
       iam_role_additional_policies = {
         custom = aws_iam_policy.custom_node_policy_describe_regions.arn
       }
-      tags = { Owner = var.tag_owner }
+      launch_template_tags = var.enable_cluster_autoscaler ? {
+        "k8s.io/cluster-autoscaler/enabled" = true
+        "k8s.io/cluster-autoscaler/${local.cluster_name}" = "owned"
+      } : {}
+      tags = merge(
+        { Owner = var.tag_owner },
+        var.enable_cluster_autoscaler ? {
+          "k8s.io/cluster-autoscaler/enabled" = "true"
+          "k8s.io/cluster-autoscaler/${local.cluster_name}" = "owned"
+        } : {}
+      )
     }
   }
 

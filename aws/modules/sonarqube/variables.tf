@@ -4,6 +4,12 @@ variable "enabled" {
   default     = false
 }
 
+variable "replica_count" {
+  description = "Number of SonarQube replicas (0 pauses the SonarQube app while keeping the Helm release installed)."
+  type        = number
+  default     = 1
+}
+
 variable "namespace" {
   description = "Kubernetes namespace for SonarQube."
   type        = string
