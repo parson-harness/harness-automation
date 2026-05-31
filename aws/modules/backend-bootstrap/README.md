@@ -5,9 +5,12 @@ One-time creation of an S3 bucket (versioned, encrypted, TLS-only) for Terraform
 ## Usage
 
 ```bash
-cd aws/backend-bootstrap
+cd aws/modules/backend-bootstrap
 terraform init
-terraform apply -auto-approve   -var='bucket_name=<globally-unique-s3-bucket>'   -var='region=us-east-1'   -var='dynamodb_table=terraform-locks'
+terraform apply -auto-approve \
+  -var='bucket_name=<globally-unique-s3-bucket>' \
+  -var='region=us-east-1' \
+  -var='dynamodb_table=terraform-locks'
 ```
 
 ## Outputs

@@ -1,28 +1,66 @@
-### Quick Start for spinning up an AKS cluster
-This will spin up a 2-node AKS cluster in the centralus region in the Harness-SE subscription. The name of the cluster and resource group is a combination of the variables.tf settings and a randomly generated animal name using [random_pet] (https://registry.terraform.io/providers/hashicorp/random/latest/docs/resources/pet).<br>
-The resources will be prepended with "harness_poc" and the random pet name will be added to the end, e.g. harness-poc-rg-mudfish is a Resource Group example that could be provisioned by this TF.
+# Azure AKS Example
 
-#### Reference
-* [Azure tutorial](https://learn.microsoft.com/en-us/azure/aks/learn/quick-kubernetes-deploy-terraform?tabs=bash&pivots=development-environment-azure-cli)
-* [Azure tutorial GH repo with TF code](https://github.com/Azure/terraform/tree/master/quickstart/201-k8s-cluster-with-tf-and-aks)
+This directory contains a simple Terraform example for provisioning an AKS cluster and its resource group.
 
-#### Setup
-Make sure you have Terraform, the Azure CLI, and kubectl installed locally. 
-1. Setup your CLI environment<br>
-```az login```<br>
-```az account show```<br>
-```az account list --query "[?user.name=='<microsoft_account_email>'].{Name:name, ID:id, Default:isDefault}" --output Table```<br>
-```az account set --subscription "<subscription_id_or_subscription_name>"```
-1. Initialize terraform<br>
-   ```terraform init -upgrade```
-3. Run terraform plan<br>
-```terraform plan -out main.tfplan```
-4. Apply the terraform plan<br>
-```terraform apply main.tfplan```
-5. Check your results<br>
-```resource_group_name=$(terraform output -raw resource_group_name)```<br>
-```az aks list --resource-group $resource_group_name --query "[].{\"K8s cluster name\":name}" --output table```<br>
-6. Store the k8s config from the terraform state file to be used by kubectl in future<br>
-```echo "$(terraform output kube_config)" > ./azurek8s```
-7. Set an env to be picked up by kubectl<br>
-```export KUBECONFIG=./azurek8s```
+It is intentionally lightweight and is best treated as a cluster provisioning example, not a full platform stack like the AWS path.
+
+## What it creates
+
+- an Azure resource group
+- an AKS cluster with a system-assigned identity
+- a default node pool
+- generated names based on `random_pet` so repeated runs are less likely to collide
+
+## Prerequisites
+
+- Terraform
+- Azure CLI
+- `kubectl`
+- access to an Azure subscription where you can create AKS resources
+
+## Authenticate to Azure
+
+```bash
+az login
+az account show
+az account set --subscription "<subscription_id_or_subscription_name>"
+```
+
+## Configure inputs
+
+Important variables include:
+
+- `resource_group_location` - defaults to `centralus`
+- `resource_group_name_prefix` - defaults to `harness-poc-rg`
+- `node_count` - defaults to `2`
+- `username` - admin username for the cluster nodes
+
+## Provision the cluster
+
+```bash
+terraform init -upgrade
+terraform plan -out main.tfplan
+terraform apply main.tfplan
+```
+
+## Verify the result
+
+```bash
+resource_group_name=$(terraform output -raw resource_group_name)
+az aks list --resource-group "$resource_group_name" --query "[].{name:name}" --output table
+```
+
+## Configure `kubectl`
+
+This example exposes the raw kubeconfig as a Terraform output.
+
+```bash
+terraform output -raw kube_config > ./azurek8s
+export KUBECONFIG=./azurek8s
+kubectl get nodes
+```
+
+## Notes
+
+- This path currently focuses on AKS provisioning only.
+- If you want the most complete sandbox workflow in this repository, use the AWS path.

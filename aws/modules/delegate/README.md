@@ -2,6 +2,10 @@
 
 This directory contains the Terraform-backed delegate module and the helper script used to install or update a delegate in the AWS workflow.
 
+If you want the conceptual explanation of how the delegate, Harness connectors, IRSA, and OIDC work together, start here:
+
+- [`../../../docs/aws-delegate-access-model.md`](../../../docs/aws-delegate-access-model.md)
+
 ## What changed
 
 The install flow is no longer a direct Helm installer.
@@ -45,6 +49,8 @@ export DELEGATE_NAME="demo-delegate"
 ## Important usage note
 
 The helper script is convenient for a guided install or update, but future full-stack `terraform apply` runs will only keep managing the delegate if you also persist the delegate variables in `TF_VAR_...` environment variables or an untracked `.tfvars` file.
+
+This repository installs the delegate runtime only. Harness connectors and delegate tokens are still created in Harness.
 
 For ongoing management, prefer the root Terraform variables:
 

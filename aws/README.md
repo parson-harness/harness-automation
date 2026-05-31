@@ -28,6 +28,12 @@ Depending on which variables you enable, this stack can manage:
 - `destroy.sh` - helper for delegate cleanup and selective infrastructure teardown
 - `QUICKSTART.md` - shortest path to a working environment
 
+## Architecture reference
+
+If you want the conceptual model behind the AWS setup, start here before going deeper into the operational steps:
+
+- [`../docs/aws-delegate-access-model.md`](../docs/aws-delegate-access-model.md)
+
 ## Prerequisites
 
 - Terraform `1.5+`

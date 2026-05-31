@@ -1,27 +1,76 @@
-# Provision a GKE Cluster and Harness Delegate
+# GCP GKE Example
 
-This repo is a companion repo to the [Provision a GKE Cluster tutorial](https://developer.hashicorp.com/terraform/tutorials/kubernetes/gke), containing Terraform to provision a GKE cluster on GCP. Also included is an optional Harness Delegate YML.
+This directory contains a Terraform example for provisioning a GKE cluster, node pool, VPC, and subnet on GCP.
 
-This sample repo also creates a VPC and subnet for the GKE cluster. This is not
-required but highly recommended to keep your GKE cluster isolated.
+It is best treated as a cluster provisioning example. Unlike the AWS path, it does not currently include a Terraform-managed Harness delegate workflow.
 
-1. ```brew install --cask google-cloud-sdk```
-1. ```gcloud init```
-1. ```gcloud auth application-default login```
-1. Update terraform.tfvars with the appropriate values for your cloud resources, e.g. project_id. You can find your project_id by running ```gcloud config get-value project```
-1. ```terraform init```
-1. ```terraform plan```
-1. ```terraform apply```
-1. ```gcloud container clusters get-credentials $(terraform output -raw kubernetes_cluster_name) --region $(terraform output -raw region)```
+## What it creates
 
-### To install k8s dashboard application
-1. ```kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.7.0/aio/deploy/recommended.yaml```
-1. ```kubectl proxy```
-1. Open another terminal window and run ```kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.7.0/aio/deploy/recommended.yaml```
-1. In the same new terminal window (while proxy continues running), run the following command to generate a token: ```kubectl -n kube-system describe secret $(kubectl -n kube-system get secret | grep service-controller-token | awk '{print $1}')```
-1. Login to the [Kubernetes dashboard](http://127.0.0.1:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/), and use the token you just generated to authenticate.
+- a VPC
+- a subnet
+- a GKE cluster
+- a separately managed node pool
 
-### To install Harness delegate
-1. Update harness-delegate-gke.yml references to <replace_with_delegate_token>
-1. If installing in any Harness account other than the SE Sandbox account, you'll also need to update the account ID references. 
-1. ```kubectl apply -f harness-delegate-gke.yml```
+## Prerequisites
+
+- Terraform
+- Google Cloud SDK
+- a GCP project where you can create GKE resources
+- authenticated `gcloud` access
+- `kubectl`
+
+## Authenticate to GCP
+
+```bash
+gcloud init
+gcloud auth application-default login
+```
+
+To confirm the active project:
+
+```bash
+gcloud config get-value project
+```
+
+## Configure inputs
+
+Set the required values in `terraform.tfvars` or another `.tfvars` file.
+
+Important variables include:
+
+- `project_id`
+- `region`
+- `label`
+- `gke_num_nodes`
+- `machine_type`
+
+## Provision the cluster
+
+```bash
+terraform init
+terraform plan
+terraform apply
+```
+
+## Configure `kubectl`
+
+```bash
+gcloud container clusters get-credentials \
+  $(terraform output -raw kubernetes_cluster_name) \
+  --region $(terraform output -raw region)
+kubectl get nodes
+```
+
+## Optional Kubernetes dashboard steps
+
+If you want a local Kubernetes dashboard for testing:
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.7.0/aio/deploy/recommended.yaml
+kubectl proxy
+```
+
+## Notes
+
+- This path currently documents GKE provisioning only.
+- If you want a Terraform-managed delegate workflow with IRSA/OIDC-style identity wiring, use the AWS path in this repository.

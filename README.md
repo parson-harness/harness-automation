@@ -16,6 +16,7 @@ This repository is designed to be practical and reusable. You can use it interna
 - `aws/` - the most complete path in this repository, including EKS, IAM/IRSA, optional delegate management, and supporting platform components
 - `azure/` - an AKS example environment
 - `gcp/` - a GKE example environment
+- `docs/` - conceptual and architecture-focused documentation
 
 ## Recommended starting points
 
@@ -32,6 +33,7 @@ Start here:
 
 - [`aws/README.md`](./aws/README.md)
 - [`aws/QUICKSTART.md`](./aws/QUICKSTART.md)
+- [`docs/aws-delegate-access-model.md`](./docs/aws-delegate-access-model.md)
 
 ### Azure
 
@@ -44,6 +46,13 @@ Start here:
 Start here:
 
 - [`gcp/README.md`](./gcp/README.md)
+
+## Architecture docs
+
+Use these when you want to understand how the AWS sandbox access model works:
+
+- [`docs/README.md`](./docs/README.md)
+- [`docs/aws-delegate-access-model.md`](./docs/aws-delegate-access-model.md)
 
 ## Common prerequisites
 

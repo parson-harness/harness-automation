@@ -1,39 +1,65 @@
-# IAM IRSA Module (Delegate Role)
+# IAM IRSA Module
 
-Creates an IAM role with a trust policy for EKS **IRSA** and attaches a minimal policy for the Harness Delegate.
+This module creates the IAM role used by a Kubernetes service account through IRSA.
 
-## Modes
+In the AWS workflow in this repository, that role is typically used by the Harness delegate.
 
-- **Standalone (existing cluster):** `resolve_from_cluster = true` and set `cluster_name` (module reads cluster to find issuer URL/OIDC provider).
-- **Coupled with new EKS:** `resolve_from_cluster = false` and pass `oidc_provider_arn` (and optionally `oidc_issuer_url`) from the EKS outputs.
+If you want the full conceptual explanation of delegate access, connectors, IRSA, and OIDC, start here:
 
-## Inputs (selected)
+- [`../../../docs/aws-delegate-access-model.md`](../../../docs/aws-delegate-access-model.md)
 
-- `cluster_name` – required when `resolve_from_cluster=true`
-- `namespace` (default: `harness-delegate-ng`)
-- `service_account_name` (default: `harness-delegate`)
-- `oidc_provider_arn` (default: `null`)
-- `oidc_issuer_url` (default: `null`)
-- `resolve_from_cluster` (default: `true`)
-- `inline_policy_json` – JSON policy for the delegate
+## What this module does
 
-## Outputs
+- resolves or accepts the cluster OIDC details
+- creates an IAM trust policy for a Kubernetes service account
+- creates an IAM role for that trust policy
+- attaches the provided IAM policy JSON to that role
 
-- `role_arn` – IAM role ARN for the delegate
+## Two operating modes
 
-## Standalone remote state
+### Existing cluster mode
 
-```bash
-cd aws/iam-irsa
-export CLUSTER_NAME="my-eks"
-export TF_VAR_tag_owner="Doe"
-export TF_VAR_region="us-east-1"
-./tf-init.sh
-terraform apply -auto-approve -var="cluster_name=${CLUSTER_NAME}"
-```
+Use this when the EKS cluster already exists.
 
-## Teardown
-Use the root script for a targeted destroy:
+- set `resolve_from_cluster = true`
+- set `cluster_name`
+- the module reads the cluster and looks up the OIDC provider automatically
+
+### Same-apply mode
+
+Use this when Terraform is creating EKS in the same root stack.
+
+- set `resolve_from_cluster = false`
+- pass `oidc_provider_arn`
+- optionally pass `oidc_issuer_url`
+
+This avoids trying to rediscover OIDC details from a cluster that is still being created.
+
+## Important inputs
+
+- `cluster_name` - required when `resolve_from_cluster = true`
+- `namespace` - Kubernetes namespace for the service account
+- `service_account_name` - Kubernetes service account name
+- `oidc_provider_arn` - OIDC provider ARN when wiring from a newly created EKS cluster
+- `oidc_issuer_url` - OIDC issuer URL when you want to pass it explicitly
+- `resolve_from_cluster` - chooses between discovery mode and passed-in mode
+- `allow_all_delegate_namespaces` - broadens the trust policy to `harness-delegate-*` namespaces
+- `inline_policy_json` - IAM policy JSON to attach to the role
+
+## Output
+
+- `role_arn` - IAM role ARN to annotate on the Kubernetes service account
+
+## Typical root usage
+
+This module is normally consumed from the AWS root stack, not run on its own.
+
+The root stack then passes the resulting `role_arn` into the delegate module so the delegate service account can use IRSA.
+
+## Cleanup
+
+Use the root helper for a targeted cleanup:
+
 ```bash
 cd aws
 ./destroy.sh --permissions --yes
