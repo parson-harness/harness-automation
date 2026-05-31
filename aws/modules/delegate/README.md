@@ -1,52 +1,69 @@
-# Harness Delegate Scripts
+# Delegate Install Helper
 
-## Install (Helm)
+This directory contains the Terraform-backed delegate module and the helper script used to install or update a delegate in the AWS workflow.
 
-- **Uniqueness:** `DELEGATE_NAME` must be unique per namespace. The Helm release name is automatically derived from `DELEGATE_NAME` (lowercased/trimmed).
-- The script prompts for missing inputs and reads from root `terraform output` where possible.
+## What changed
 
-### Minimal
+The install flow is no longer a direct Helm installer.
+
+`install_delegate.sh` now:
+
+- gathers delegate inputs from environment variables or prompts
+- reads Terraform outputs when available
+- updates kubeconfig for the target EKS cluster
+- runs a targeted Terraform plan and apply for the delegate path
+
+## Minimal usage
 
 ```bash
 cd aws
-
-export HARNESS_ACCOUNT_ID="<your-harness-account>"
-export DELEGATE_TOKEN="<a-secure-token>"
+export HARNESS_ACCOUNT_ID="<your-account-id>"
+export DELEGATE_TOKEN="<your-delegate-token>"
 export DELEGATE_NAME="demo-delegate"
-
-./delegate/install_delegate.sh
+./modules/delegate/install_delegate.sh
 ```
 
-### Dynamic image resolution
-If you **don’t** set `DELEGATE_IMAGE`, the script will:
-1) Fetch the **latest** `harness/delegate` tag from Docker Hub (no auth required).  
-2) If Docker Hub is unavailable, and you set `HARNESS_API_KEY`, it will query the Harness API for the **latest supported version**.
+## Common optional environment variables
 
-You can override with:
+- `NS` - delegate namespace, defaults to `harness-delegate-ng`
+- `SA` - delegate service account, defaults to `harness-delegate`
+- `REGION` - AWS region if it cannot be read from Terraform outputs
+- `CLUSTER_NAME` - EKS cluster name if it cannot be read from Terraform outputs
+- `DELEGATE_RELEASE_NAME` - optional Helm release name override
+- `MANAGER_ENDPOINT` - delegate manager endpoint, defaults to `https://app.harness.io`
+- `DELEGATE_REPLICAS` - number of delegate replicas, defaults to `1`
+- `DELEGATE_K8S_PERMISSIONS_TYPE` - defaults to `CLUSTER_ADMIN`
+- `DELEGATE_POLL_FOR_TASKS` - set to `true` if polling is required
+- `DELEGATE_DESCRIPTION` - optional delegate description
+- `DELEGATE_TAGS` - comma-separated delegate tags
+- `DELEGATE_IMAGE_TAG` - optional image tag override
+- `DELEGATE_UPGRADER_ENABLED` - defaults to `false`
+- `DELEGATE_UPGRADER_TOKEN` - optional upgrader token override
+- `RUN_TERRAFORM_INIT` - defaults to `true`
+- `AUTO_APPROVE` - set to `true` to skip the apply confirmation prompt
+
+## Important usage note
+
+The helper script is convenient for a guided install or update, but future full-stack `terraform apply` runs will only keep managing the delegate if you also persist the delegate variables in `TF_VAR_...` environment variables or an untracked `.tfvars` file.
+
+For ongoing management, prefer the root Terraform variables:
+
+- `create_delegate`
+- `delegate_name`
+- `delegate_account_id`
+- `delegate_token`
+- and any optional `delegate_*` variables you need
+
+## Cleanup
+
+For Terraform-managed cleanup:
+
 ```bash
-export DELEGATE_IMAGE="us-docker.pkg.dev/gar-prod-setup/harness-public/harness/delegate:<tag>"
-# or change the prefix (defaults to GAR path above)
-export DELEGATE_IMAGE_PREFIX="us-docker.pkg.dev/gar-prod-setup/harness-public/harness/delegate"
+terraform destroy -target=module.delegate
 ```
 
-The script writes a **temporary `values.yaml`** with proper quoting (fixes YAML parse errors).
-
-### Other options
-
-- `NS` (namespace, default: `harness-delegate-ng`)
-- `SA` (ServiceAccount, default: `harness-delegate`)
-- `REGION`, `CLUSTER_NAME` (if kubeconfig isn’t already pointed at the cluster)
-- `MANAGER_ENDPOINT`, `DELEGATE_REPLICAS`
-- `IRSA_ROLE_ARN` (auto-read from TF output if present)
-
-## Uninstall
-
-Use the root `destroy.sh` to target delegates precisely:
+For release-focused cleanup with the helper script path:
 
 ```bash
-# remove by delegate name (release auto-resolved)
 ./destroy.sh --delegate --delegate-name demo-delegate --yes
-
-# or list first
-./destroy.sh --delegate --list
 ```

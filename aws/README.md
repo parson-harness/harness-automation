@@ -1,53 +1,54 @@
-# Harness AWS Automation — EKS + IRSA + Delegate
+# AWS Sandbox Automation
 
-This repo lets you do **either** of the following, using the same codebase:
+This directory contains the Terraform configuration and helper scripts for building an AWS-based Kubernetes sandbox environment.
 
-- **Create everything**: VPC, EKS, and the IAM role (IRSA) the Harness Delegate uses.
-- **Use an existing EKS**: Only create the IAM permissions (IRSA) and then install the Delegate.
+It supports two common starting points:
 
-Designed for Harness SEs *and* customers. The setup is **decoupled**, so you can run each part independently.
+- provision a new EKS cluster and supporting AWS resources
+- connect to an existing EKS cluster and add the IAM and delegate pieces you need
 
----
+The AWS path is intended to be useful for internal demos, workshops, proof-of-concept environments, and customer-owned sandboxes.
 
-## What changed recently (2025-09-23)
+## What gets managed here
 
-- **Delegate install is sturdier:** the script now:
-  - uses the **official Helm repo** alias `harness-delegate` and chart `harness-delegate/harness-delegate-ng`,
-  - **dynamically resolves the latest** `harness/delegate` image tag from Docker Hub (Harness API fallback),
-  - writes a **temporary `values.yaml`** so everything is properly **quoted** (fixes YAML parse errors and invalid image names),
-  - maps **`DELEGATE_NAME → Helm release` 1:1**, so multiple delegates per cluster work cleanly.
-- **Destroy script is macOS-safe** (Bash 3.2 compatible) and can uninstall a delegate by **name** without touching IRSA/cluster.
-- **EKS nodegroups use `AL2023_x86_64`** by default to avoid AL2 incompatibility on newer Kubernetes.
+Depending on which variables you enable, this stack can manage:
 
----
+- a VPC and EKS cluster
+- IAM roles for Kubernetes service accounts through IRSA
+- a Terraform-managed delegate Helm release
+- supporting platform components such as ingress, cert-manager, observability components, and optional add-ons
 
-## Contents
+## Repository contents
 
-- [`modules/backend-bootstrap/`](./backend-bootstrap) – one-time S3 + DynamoDB creation for remote Terraform state
-- [`modules/eks/`](./eks) – EKS cluster (VPC, EKS, node groups, OIDC outputs)
-- [`modules/iam-irsa/`](./iam-irsa) – IAM role & policy for the Harness Delegate via **IRSA**
-- [`modules/delegate/`](./delegate) – scripts to **install** and **uninstall** the Delegate
-- `tf-init.sh` – initializes **remote state** for the root stack
-- `destroy.sh` – decoupled teardown: delegate, permissions, and/or cluster (mac-safe)
-
-> **Remote state**: Bootstrap once in `backend-bootstrap/`, then run `./tf-init.sh` in this folder.
-
----
+- `modules/backend-bootstrap/` - one-time S3 and DynamoDB setup for remote Terraform state
+- `modules/eks/` - VPC, EKS, and node group provisioning
+- `modules/iam-irsa/` - IAM role creation for Kubernetes service accounts
+- `modules/delegate/` - Terraform-backed delegate installation helper and module inputs
+- `tf-init.sh` - initializes the root stack to use the remote backend
+- `destroy.sh` - helper for delegate cleanup and selective infrastructure teardown
+- `QUICKSTART.md` - shortest path to a working environment
 
 ## Prerequisites
 
-- Terraform **v1.5+**
-- AWS CLI configured (`aws sts get-caller-identity` works)
-- `kubectl`, `helm`, and `jq` (jq optional but speeds up tag resolution)
-- `curl` (used to resolve the latest delegate image tag)
-- IAM permissions to create the resources you choose (S3/Dynamo, EKS, IAM, etc.)
+- Terraform `1.5+`
+- AWS CLI authenticated to the target account
+- `kubectl`
+- `python3`
+- `helm` if you plan to inspect or clean up Helm releases with local commands or `destroy.sh`
+- permissions to create the AWS and Kubernetes resources you choose to enable
 
----
-
-## One-time: create the S3 backend
+Verify your AWS session before you begin:
 
 ```bash
-cd modules/backend-bootstrap
+aws sts get-caller-identity
+```
+
+## One-time backend bootstrap
+
+If you have not already created a remote state backend for this stack:
+
+```bash
+cd aws/modules/backend-bootstrap
 terraform init
 terraform apply -auto-approve \
   -var='bucket_name=<globally-unique-s3-bucket>' \
@@ -55,131 +56,163 @@ terraform apply -auto-approve \
   -var='dynamodb_table=terraform-locks'
 ```
 
-Creates:
-- S3 bucket (versioned, encrypted, TLS-only) for **remote state**
-- DynamoDB table for **state locking**
+This creates:
 
----
+- an S3 bucket for Terraform state
+- a DynamoDB table for state locking
 
-## Initialize remote state for the root stack
+## Initialize the root stack
 
 ```bash
 cd aws
-# Set once; both init and apply will reuse them
-export TF_VAR_tag_owner="Doe"          # used in names/tags and in the state key
-export TF_VAR_region="us-east-1"       # provider region
-
-./tf-init.sh           # uses backend.hcl + computed key
+export TF_VAR_region="us-east-1"
+export TF_VAR_tag_owner="Doe"
+./tf-init.sh
 ```
 
-Use `./tf-init.sh --migrate` once if moving local → remote state.
+`tag_owner` is used in names and tags so multiple users can share the same AWS account more safely.
 
----
+## Choose a deployment mode
 
-## Root Variables & Defaults
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `region` | `us-east-1` | AWS provider region |
-| `cluster` | `harness-eks` | Base cluster name (actual: `${cluster}-${tag_owner}`) |
-| `tag_owner` | `HarnessPOV` | Suffix for names and the `Owner` tag (set to **your last name**) |
-| `instance_type` | `t3.large` | EKS managed node group instance type |
-| `delegate_namespace` | `harness-delegate-ng` | K8s namespace for the Delegate |
-| `delegate_service_account` | `harness-delegate` | K8s ServiceAccount for the Delegate |
-| `artifacts_bucket` | `""` | Optional S3 bucket the Delegate can read/write |
-| `ecr_repo_prefix` | `""` | Optional ECR repo prefix for scoping push/pull |
-| `assume_role_arns` | `[]` | Optional extra role ARNs the Delegate may assume |
-| `create_eks` | `true` | Whether to create a **new** EKS cluster |
-| `existing_cluster_name` | `null` | Required if `create_eks=false` |
-
-Effective cluster name: **`${var.cluster}-${var.tag_owner}`**.
-
----
-
-## Common flows
-
-### A) Provision everything (EKS + IRSA), then install Delegate
+### Option A: create a new EKS cluster
 
 ```bash
 cd aws
 terraform apply
-
-# Install delegate (latest image auto-resolved; IRSA auto read from TF outputs if present)
-export HARNESS_ACCOUNT_ID="<your-harness-account>"
-export DELEGATE_TOKEN="<a-secure-token>"
-export DELEGATE_NAME="demo-delegate"
-./modules/delegate/install_delegate.sh
 ```
 
-Verify:
-```bash
-kubectl -n harness-delegate-ng get pods,sa,cronjob
-helm -n harness-delegate-ng list
-```
-
-### B) Use an existing EKS (IRSA + Delegate only)
+### Option B: reuse an existing EKS cluster
 
 ```bash
 cd aws
 terraform apply \
   -var="create_eks=false" \
-  -var="existing_cluster_name=<your-existing-eks-name>"
+  -var="existing_cluster_name=<your-eks-cluster-name>"
+```
 
-export HARNESS_ACCOUNT_ID="<your-harness-account>"
-export DELEGATE_TOKEN="<a-secure-token>"
+## Install a delegate
+
+There are two good ways to manage the delegate.
+
+### Recommended for ongoing Terraform management
+
+Persist your delegate settings in environment variables or an untracked `.tfvars` file, then run `terraform apply` normally.
+
+Example using environment variables:
+
+```bash
+export TF_VAR_create_delegate=true
+export TF_VAR_delegate_name="demo-delegate"
+export TF_VAR_delegate_account_id="<your-account-id>"
+export TF_VAR_delegate_token="<your-delegate-token>"
+terraform apply
+```
+
+Optional variables you may want to set include:
+
+- `TF_VAR_delegate_release_name`
+- `TF_VAR_delegate_replicas`
+- `TF_VAR_delegate_manager_endpoint`
+- `TF_VAR_delegate_k8s_permissions_type`
+- `TF_VAR_delegate_tags`
+- `TF_VAR_delegate_image_tag`
+- `TF_VAR_delegate_upgrader_enabled`
+
+This is the best option if you expect future `terraform apply` runs to keep managing the delegate.
+
+### Guided install helper
+
+If you want an interactive helper, use:
+
+```bash
+cd aws
+export HARNESS_ACCOUNT_ID="<your-account-id>"
+export DELEGATE_TOKEN="<your-delegate-token>"
 export DELEGATE_NAME="demo-delegate"
 ./modules/delegate/install_delegate.sh
 ```
 
----
+The script now wraps Terraform rather than calling Helm directly. It can:
 
-## Uninstall / Destroy
+- read cluster name and region from Terraform outputs when available
+- update kubeconfig for the target EKS cluster
+- run a targeted delegate plan and apply
+- prompt for missing delegate inputs
 
-### Remove delegates (Helm)
+If you use the helper script and want later full-stack `terraform apply` runs to continue managing the delegate, save the same delegate settings in `TF_VAR_...` environment variables or an untracked `.tfvars` file afterward.
+
+## Verify the environment
 
 ```bash
-# by delegate name (release auto-resolved 1:1)
-./destroy.sh --delegate --delegate-name demo-delegate --yes
-
-# or preview first
-./destroy.sh --delegate --pattern "demo-*" --list
+kubectl -n harness-delegate-ng get pods,sa,secrets
+terraform output delegate_release_name
+terraform output delegate_image_tag
 ```
 
-Options: `--release <name>`, `--pattern "glob"`, `--delete-namespace`.
+If you are using a different namespace or release name, substitute those values.
 
-### Decoupled infra teardown (optional)
+## Cleanup options
+
+### Remove the delegate while keeping the cluster
+
+If the delegate is managed through normal Terraform variables, use one of these approaches:
 
 ```bash
-# IAM/IRSA only
+terraform destroy -target=module.delegate
+```
+
+or set:
+
+```hcl
+create_delegate = false
+```
+
+and run:
+
+```bash
+terraform apply
+```
+
+### Clean up a delegate release with the helper script
+
+For Helm-release-focused cleanup or recovery work:
+
+```bash
+./destroy.sh --delegate --delegate-name demo-delegate --yes
+```
+
+### Remove IRSA only
+
+```bash
 ./destroy.sh --permissions --yes
+```
 
-# Cluster (EKS + VPC)
+### Remove the EKS cluster and VPC
+
+```bash
 ./destroy.sh --cluster --yes
+```
 
-# Everything: delegate -> permissions -> cluster
+### Remove everything
+
+```bash
 ./destroy.sh --all --yes
 ```
 
----
-
 ## Troubleshooting
 
-- **YAML parse error / invalid image name** during Helm install:
-  - The installer now generates a **temp values.yaml** and quotes all strings.
-  - It also prints progress to **stderr** and only the final image value to **stdout**, so Helm never receives logging noise as a value.
+- **AWS auth expired**
+  - Re-authenticate before `terraform init`, `plan`, or `apply`.
+  - Verify with `aws sts get-caller-identity`.
 
-- **Plan errors on data sources**: When creating EKS and IRSA together, the root passes OIDC ARN/issuer to IRSA and sets `resolve_from_cluster=false`.
+- **Delegate disappears on a later full `terraform apply`**
+  - Make sure `create_delegate` and the delegate inputs are persisted in `TF_VAR_...` environment variables or an untracked `.tfvars` file.
+  - The guided helper script is convenient for first install, but ongoing management should use saved Terraform inputs.
 
-- **Nodegroup error “AL2_x86_64 is only supported for versions ≤ 1.32”**:
-  - Nodegroups default to `AL2023_x86_64`. If you forked earlier code, update `eks_managed_node_group_defaults.ami_type`.
+- **Existing cluster mode fails**
+  - Confirm the AWS identity you are using can describe the cluster and update kubeconfig.
+  - Confirm your local Kubernetes access is authorized for that cluster.
 
----
+## Fastest path
 
-## Notes
-
-- Names and tags include your `tag_owner` so resources are easy to find in the AWS account.
-- Backends are **configured at init time** (variables are not available to backend configs), so use `tf-init.sh`.
-
----
-> **Quickstart added (2025-09-23)**  
-See [`QUICKSTART.md`](./QUICKSTART.md) for the fastest end-to-end path, including the exact env vars and commands to run.
+If you just want the shortest first-run checklist, see [`QUICKSTART.md`](./QUICKSTART.md).

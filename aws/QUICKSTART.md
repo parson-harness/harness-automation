@@ -1,12 +1,8 @@
-# Quickstart — Harness AWS (EKS + IRSA + Delegate)
+# AWS Quickstart
 
-> **Goal:** Make it crystal clear what to set and what to run.  
-> Pick **Path A** (new EKS) or **Path B** (existing EKS). Everything else is optional.
+This is the shortest path to a working AWS sandbox environment in this repository.
 
----
-
-## 0) One-time: remote state backend (S3 + DynamoDB)
-If not done yet:
+## 0) Create the remote state backend once
 
 ```bash
 cd aws/modules/backend-bootstrap
@@ -17,135 +13,90 @@ terraform apply -auto-approve \
   -var='dynamodb_table=terraform-locks'
 ```
 
-Then initialize the root to use that backend:
+## 1) Initialize the AWS root stack
 
 ```bash
 cd aws
-export TF_VAR_region="us-east-1"        # provider region
-export TF_VAR_tag_owner="Parson"           # will suffix resource names/tags
+export TF_VAR_region="us-east-1"
+export TF_VAR_tag_owner="Doe"
 ./tf-init.sh
 ```
 
----
+## 2) Provision infrastructure
 
-## Path A — New EKS cluster + IRSA + Delegate
+### New EKS cluster
 
-### 1) Terraform
 ```bash
-cd aws
 terraform apply
 ```
 
-### 2) Install Delegate (required vars)
+### Existing EKS cluster
+
 ```bash
-export HARNESS_ACCOUNT_ID="<your-harness-account>"
-export DELEGATE_TOKEN="<your-delegate-token>"     # from Harness UI
-export DELEGATE_NAME="demo-delegate"              # unique per namespace
-./modules/delegate/install_delegate.sh
-```
-
-### 3) Verify
-```bash
-kubectl -n harness-delegate-ng get pods
-helm -n harness-delegate-ng list
-```
-
----
-
-## Path B — Existing EKS cluster + IRSA + Delegate
-
-### 1) Terraform (IRSA only; reuse your cluster)
-```bash
-cd aws
 terraform apply \
   -var="create_eks=false" \
   -var="existing_cluster_name=<your-eks-cluster-name>"
 ```
 
-### 2) Install Delegate (same as Path A)
+## 3) Install a delegate
+
+### Fastest guided path
+
 ```bash
-export HARNESS_ACCOUNT_ID="<your-harness-account>"
+export HARNESS_ACCOUNT_ID="<your-account-id>"
 export DELEGATE_TOKEN="<your-delegate-token>"
 export DELEGATE_NAME="demo-delegate"
 ./modules/delegate/install_delegate.sh
 ```
 
----
+### Best path for ongoing Terraform management
 
-## Swap / Reinstall a Delegate (keep cluster + IRSA)
+If you want future `terraform apply` runs to continue managing the delegate, persist these settings in environment variables or an untracked `.tfvars` file:
 
 ```bash
-cd aws
-./destroy.sh --delegate --delegate-name demo-delegate --yes
-
-export HARNESS_ACCOUNT_ID="..."
-export DELEGATE_TOKEN="..."
-export DELEGATE_NAME="demo-delegate"
-./modules/delegate/install_delegate.sh
+export TF_VAR_create_delegate=true
+export TF_VAR_delegate_name="demo-delegate"
+export TF_VAR_delegate_account_id="<your-account-id>"
+export TF_VAR_delegate_token="<your-delegate-token>"
+terraform apply
 ```
 
----
+## 4) Verify
 
-## Clean up (optional)
+```bash
+kubectl -n harness-delegate-ng get pods
+terraform output delegate_release_name
+terraform output delegate_image_tag
+```
 
-- **Delegate only:**  
-  `./destroy.sh --delegate --delegate-name demo-delegate --yes`
+## 5) Clean up
 
-- **Permissions (IRSA) only:**  
-  `./destroy.sh --permissions --yes`
+### Delegate only
 
-- **Cluster (EKS + VPC) only:**  
-  `./destroy.sh --cluster --yes`
+```bash
+terraform destroy -target=module.delegate
+```
 
-- **Everything:**  
-  `./destroy.sh --all --yes`
+### IRSA only
 
----
+```bash
+./destroy.sh --permissions --yes
+```
 
-## Variables you typically set
+### Cluster only
 
-### Terraform (root)
-- `TF_VAR_region` — AWS region (e.g., `us-east-1`)
-- `TF_VAR_tag_owner` — your surname or unique tag (used in names/tags)
-- Optional:
-  - `-var="create_eks=false"` and `-var="existing_cluster_name=<cluster>"` for Path B
+```bash
+./destroy.sh --cluster --yes
+```
 
-### Delegate install (script reads some from TF outputs)
-- **Required:**  
-  `HARNESS_ACCOUNT_ID`, `DELEGATE_TOKEN`, `DELEGATE_NAME`
-- **Common optional:**  
-  `NS` (default `harness-delegate-ng`), `SA` (default `harness-delegate`),  
-  `REGION`, `CLUSTER_NAME` (if your kube context isn’t set),  
-  `IRSA_ROLE_ARN` (auto-read from outputs if present),  
-  `DELEGATE_REPLICAS` (default `1`).
+### Everything
 
-> The script automatically resolves the **latest** `harness/delegate` image tag from Docker Hub.  
-> To pin an image: `export DELEGATE_IMAGE="us-docker.pkg.dev/gar-prod-setup/harness-public/harness/delegate:<tag>"`
-
----
-
-## Script flags & knobs (cheatsheet)
-
-### `modules/delegate/install_delegate.sh` (env-driven)
-- **Required:** `HARNESS_ACCOUNT_ID`, `DELEGATE_TOKEN`, `DELEGATE_NAME`
-- **Optional:**  
-  `NS`, `SA`, `REGION`, `CLUSTER_NAME`, `DELEGATE_REPLICAS`,  
-  `MANAGER_ENDPOINT` (default `https://app.harness.io/gratis`),  
-  `IRSA_ROLE_ARN` (auto from TF outputs if present),  
-  `DELEGATE_IMAGE` or `DELEGATE_IMAGE_PREFIX`,  
-  `KUBECONFIG_UPDATE=auto|skip`, `CONTEXT_NAME`.
-
-### `destroy.sh` (flags)
-- **Delegate uninstall:**  
-  `--delegate --delegate-name <name>` (maps to Helm release)  
-  or `--release <helm-release>` or `--pattern "glob"`  
-  Extras: `--list`, `--delete-namespace`, `--ns <namespace>`
-- **Infra:** `--permissions`, `--cluster`, or `--all`
-- **General:** `--region`, `--cluster-name`, `--yes`
-
----
+```bash
+./destroy.sh --all --yes
+```
 
 ## Notes
 
-- Nodegroups default to **`AL2023_x86_64`** to support newer Kubernetes versions.
-- Names/tags include `tag_owner` for easier tracking in AWS.
+- Save delegate-related Terraform inputs if you want later full applies to keep the delegate installed.
+- Verify your AWS session before starting with `aws sts get-caller-identity`.
+- Names and tags include `tag_owner` so multiple users can share the same AWS account more safely.
