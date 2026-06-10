@@ -29,12 +29,6 @@ variable "min_size" {
   default     = 0
 }
 
-variable "desired_size" {
-  description = "Desired instance size for EKS managed node groups"
-  type        = number
-  default     = 2
-}
-
 variable "max_size" {
   description = "Max instance size for EKS managed node groups"
   type        = number
@@ -96,11 +90,13 @@ variable "assume_role_arns" {
 }
 
 variable "warm_az" {
-  type    = string
-  default = null
+  description = "Availability Zone that keeps baseline EKS capacity warm. Leave null to keep all per-AZ node groups at zero desired nodes."
+  type        = string
+  default     = null
 } # e.g. "us-east-1a"
 
 variable "warm_desired" {
-  type    = number
-  default = 0
+  description = "Desired baseline node count for the warm Availability Zone selected by warm_az."
+  type        = number
+  default     = 0
 } # e.g. 1

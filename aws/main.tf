@@ -10,7 +10,6 @@ module "eks" {
   cluster_version          = var.cluster_version
   instance_type            = var.instance_type
   min_size                 = var.min_size
-  desired_size             = var.desired_size
   max_size                 = var.max_size
   enable_cluster_autoscaler = var.enable_cluster_autoscaler
   mixed_capacity_enabled   = var.mixed_capacity_enabled

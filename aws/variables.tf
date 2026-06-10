@@ -25,13 +25,15 @@ variable "region" {
 }
 
 variable "warm_az" {
-  type    = string
-  default = null
+  description = "Availability Zone that keeps baseline EKS capacity warm. Leave null to keep all per-AZ node groups at zero desired nodes."
+  type        = string
+  default     = null
 } # e.g. "us-east-1a"
 
 variable "warm_desired" {
-  type    = number
-  default = 0
+  description = "Desired baseline node count for the warm Availability Zone selected by warm_az."
+  type        = number
+  default     = 0
 } # e.g. 1
 
 variable "cluster" {
@@ -65,7 +67,7 @@ variable "min_size" {
 }
 
 variable "desired_size" {
-  description = "Desired size of cluster node group."
+  description = "Deprecated. This value is ignored by the current per-AZ EKS node group layout; baseline capacity is controlled by warm_az and warm_desired."
   type        = number
   default     = 2
 }
