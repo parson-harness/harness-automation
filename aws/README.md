@@ -87,6 +87,13 @@ cd aws
 terraform apply
 ```
 
+When this stack creates EKS, baseline worker capacity is controlled by the warm-node settings:
+
+- `warm_az` selects which Availability Zone keeps baseline nodes running
+- `warm_desired` sets how many baseline nodes stay warm in that AZ
+- `max_size` sets the per-node-group scale-up ceiling
+- if `warm_az` is unset, the per-AZ node groups start with zero desired nodes
+
 ### Option B: reuse an existing EKS cluster
 
 ```bash

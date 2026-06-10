@@ -24,6 +24,14 @@ export TF_VAR_tag_owner="Doe"
 
 ## 2) Provision infrastructure
 
+If you are creating a new EKS cluster, baseline worker capacity is controlled by:
+
+- `warm_az` - the Availability Zone that keeps warm nodes
+- `warm_desired` - the number of baseline nodes to keep in that AZ
+- `max_size` - the per-node-group scale-up ceiling
+
+If `warm_az` is unset, the per-AZ node groups start at zero desired nodes.
+
 ### New EKS cluster
 
 ```bash
