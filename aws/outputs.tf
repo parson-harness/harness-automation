@@ -45,6 +45,36 @@ output "delegate_image_tag" {
   value       = var.create_delegate ? module.delegate[0].delegate_image_tag : null
 }
 
+output "istio_namespace" {
+  description = "Namespace where Istio control plane components are installed."
+  value       = var.create_istio ? module.istio[0].namespace : null
+}
+
+output "istio_gateway_namespace" {
+  description = "Namespace where the shared Istio ingress gateway is installed."
+  value       = var.create_istio ? module.istio[0].gateway_namespace : null
+}
+
+output "istio_gateway_service_name" {
+  description = "Kubernetes Service name for the shared Istio ingress gateway."
+  value       = var.create_istio ? module.istio[0].gateway_service_name : null
+}
+
+output "istio_gateway_lb_hostname" {
+  description = "Load balancer hostname for the shared Istio ingress gateway."
+  value       = var.create_istio ? module.istio[0].gateway_load_balancer_hostname : null
+}
+
+output "istio_gateway_lb_ip" {
+  description = "Load balancer IP for the shared Istio ingress gateway."
+  value       = var.create_istio ? module.istio[0].gateway_load_balancer_ip : null
+}
+
+output "kiali_namespace" {
+  description = "Namespace where Kiali is installed when enabled."
+  value       = var.create_istio && var.enable_kiali ? module.istio[0].kiali_namespace : null
+}
+
 # Nice-to-have Grafana hints (null when not created)
 output "grafana_namespace" {
   value       = var.create_grafana ? module.grafana[0].namespace : null

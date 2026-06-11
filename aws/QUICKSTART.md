@@ -46,6 +46,26 @@ terraform apply \
   -var="existing_cluster_name=<your-eks-cluster-name>"
 ```
 
+### Optional: enable the shared Istio addon
+
+Add this to your local untracked `.tfvars` file if you want a minimal shared Istio setup:
+
+```hcl
+create_istio                         = true
+istio_namespace                     = "istio-system"
+istio_gateway_namespace             = "istio-ingress"
+istio_chart_version                 = "1.24.3"
+istio_istiod_replica_count          = 1
+istio_ingress_gateway_replica_count = 1
+enable_kiali                        = false
+```
+
+Then run:
+
+```bash
+terraform apply
+```
+
 ## 3) Install a delegate
 
 ### Fastest guided path
@@ -75,6 +95,16 @@ terraform apply
 kubectl -n harness-delegate-ng get pods
 terraform output delegate_release_name
 terraform output delegate_image_tag
+```
+
+If you enabled Istio, also verify:
+
+```bash
+kubectl get pods -n istio-system
+kubectl get svc -n istio-ingress
+terraform output istio_gateway_service_name
+terraform output istio_gateway_lb_hostname
+terraform output istio_gateway_lb_ip
 ```
 
 ## 5) Clean up
