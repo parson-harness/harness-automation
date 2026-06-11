@@ -16,6 +16,7 @@ Depending on which variables you enable, this stack can manage:
 - a VPC and EKS cluster
 - IAM roles for Kubernetes service accounts through IRSA
 - a Terraform-managed delegate Helm release
+- an optional shared Istio control plane and ingress gateway
 - supporting platform components such as ingress, cert-manager, observability components, and optional add-ons
 
 ## Repository contents
@@ -24,6 +25,7 @@ Depending on which variables you enable, this stack can manage:
 - `modules/eks/` - VPC, EKS, and node group provisioning
 - `modules/iam-irsa/` - IAM role creation for Kubernetes service accounts
 - `modules/delegate/` - Terraform-backed delegate installation helper and module inputs
+- `modules/istio/` - optional shared Istio base, control plane, ingress gateway, and optional Kiali
 - `tf-init.sh` - initializes the root stack to use the remote backend
 - `destroy.sh` - helper for delegate cleanup and selective infrastructure teardown
 - `QUICKSTART.md` - shortest path to a working environment
@@ -101,6 +103,62 @@ cd aws
 terraform apply \
   -var="create_eks=false" \
   -var="existing_cluster_name=<your-eks-cluster-name>"
+```
+
+## Optional Istio addon
+
+This repo can install a minimal shared Istio control plane for sandbox learning:
+
+- Istio base and CRDs
+- `istiod`
+- one shared ingress gateway
+- optional Kiali
+
+It does **not** make any application opt into the mesh by default.
+
+Keep app-specific Istio resources such as namespace labels, `Gateway`, `VirtualService`, `DestinationRule`, or `AuthorizationPolicy` outside this repo.
+
+### Recommended local `.tfvars` shape
+
+Because `aws/*.tfvars` files are gitignored here, the cleanest way to enable Istio is to add something like this to your local untracked `.tfvars` file:
+
+```hcl
+create_istio                               = true
+istio_namespace                           = "istio-system"
+istio_gateway_namespace                   = "istio-ingress"
+istio_chart_version                       = "1.24.3"
+istio_istiod_replica_count                = 1
+istio_ingress_gateway_replica_count       = 1
+istio_ingress_gateway_service_type        = "LoadBalancer"
+istio_ingress_gateway_service_annotations = {}
+
+enable_kiali        = false
+kiali_namespace     = "kiali"
+kiali_chart_version = null
+kiali_service_type  = "ClusterIP"
+```
+
+Then run:
+
+```bash
+terraform apply
+```
+
+### Verify Istio
+
+```bash
+kubectl get pods -n istio-system
+kubectl get svc -n istio-ingress
+terraform output istio_gateway_service_name
+terraform output istio_gateway_lb_hostname
+terraform output istio_gateway_lb_ip
+```
+
+If you enable Kiali, you can also check:
+
+```bash
+kubectl get pods -n kiali
+terraform output kiali_namespace
 ```
 
 ## Install a delegate

@@ -156,6 +156,27 @@ module "cluster_autoscaler" {
   depends_on = [module.cluster_autoscaler_irsa]
 }
 
+module "istio" {
+  source = "./modules/istio"
+  count  = var.create_istio ? 1 : 0
+
+  enabled                             = var.create_istio
+  namespace                           = var.istio_namespace
+  gateway_namespace                   = var.istio_gateway_namespace
+  chart_version                       = var.istio_chart_version
+  istiod_replica_count                = var.istio_istiod_replica_count
+  ingress_gateway_replica_count       = var.istio_ingress_gateway_replica_count
+  ingress_gateway_service_type        = var.istio_ingress_gateway_service_type
+  ingress_gateway_service_annotations = var.istio_ingress_gateway_service_annotations
+  enable_kiali                        = var.enable_kiali
+  kiali_namespace                     = var.kiali_namespace
+  kiali_chart_version                 = var.kiali_chart_version
+  kiali_service_type                  = var.kiali_service_type
+  prometheus_url                      = local.prometheus_url_effective
+
+  depends_on = [data.aws_eks_cluster.this]
+}
+
 module "delegate" {
   source = "./modules/delegate"
   count  = var.create_delegate ? 1 : 0
@@ -190,10 +211,7 @@ module "delegate" {
 # Only attempt DNS if we don't already have an IP
 # Resolve NLB A record only if we have a hostname and no IP yet
 data "dns_a_record_set" "ingress_nlb" {
-  count = (
-    try(module.ingress_nginx.lb_ip, "") == "" &&
-    try(module.ingress_nginx.lb_hostname, "") != ""
-  ) ? 1 : 0
+  count = var.create_grafana && trimspace(var.grafana_host) == "" ? 1 : 0
   host = module.ingress_nginx.lb_hostname
 }
 
